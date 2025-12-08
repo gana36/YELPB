@@ -1,19 +1,74 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Phone, Clock, Navigation, Calendar, Star, Share2, Users, Sparkles, Check, Trophy, CalendarPlus } from 'lucide-react';
+import { MapPin, Phone, Clock, Navigation, Calendar, Star, Share2, Sparkles, Check, Trophy, CalendarPlus, X } from 'lucide-react';
+import { apiService } from '../services/api';
 
 interface WinnerScreenProps {
   onNavigate: () => void;
+  restaurant?: any;
+  preferences?: {
+    bookingDate: string;
+    bookingTime: string;
+    partySize: number;
+  };
 }
 
-export function WinnerScreen({ onNavigate }: WinnerScreenProps) {
+export function WinnerScreen({ onNavigate, restaurant, preferences }: WinnerScreenProps) {
   const [showConfetti, setShowConfetti] = useState(true);
-  const [activeTab, setActiveTab] = useState<'details' | 'group'>('details');
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [bookingDate, setBookingDate] = useState(preferences?.bookingDate || '');
+  const [bookingTime, setBookingTime] = useState(preferences?.bookingTime || '19:00');
+  const [partySize, setPartySize] = useState(preferences?.partySize || 2);
+  const [isBooking, setIsBooking] = useState(false);
+  const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [bookingMessage, setBookingMessage] = useState('');
 
   useEffect(() => {
     const timer = setTimeout(() => setShowConfetti(false), 3000);
+    // Set default date to tomorrow if not provided
+    if (!bookingDate) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      setBookingDate(tomorrow.toISOString().split('T')[0]);
+    }
     return () => clearTimeout(timer);
-  }, []);
+  }, [bookingDate]);
+
+  const handleBookReservation = async () => {
+    if (!restaurant || !bookingDate || !bookingTime) {
+      alert('Please select a date and time');
+      return;
+    }
+
+    setIsBooking(true);
+    try {
+      const response = await apiService.bookReservation(
+        restaurant.name,
+        partySize,
+        bookingDate,
+        bookingTime,
+        37.7749, // TODO: Use actual user location
+        -122.4194
+      );
+
+      setBookingSuccess(true);
+      setBookingMessage(response.message || 'Reservation request sent! Check Yelp for confirmation.');
+      setTimeout(() => {
+        setShowBookingModal(false);
+        setBookingSuccess(false);
+      }, 3000);
+    } catch (error: any) {
+      alert(`Booking failed: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsBooking(false);
+    }
+  };
+
+  const restaurantName = restaurant?.name || 'Trattoria Luna';
+  const restaurantRating = restaurant?.rating || 4.8;
+  const restaurantCuisine = restaurant?.cuisine || 'Italian';
+  const restaurantPrice = restaurant?.price || '$$';
+  const restaurantImage = restaurant?.image || 'https://images.unsplash.com/photo-1757358957218-67e771ec07bb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxnb3VybWV0JTIwZm9vZCUyMHBob3RvZ3JhcGh5fGVufDF8fHx8MTc2NTE0MDQ0Mnww&ixlib=rb-4.1.0&q=80&w=1080';
 
   return (
     <div className="min-h-screen bg-black">
@@ -56,7 +111,7 @@ export function WinnerScreen({ onNavigate }: WinnerScreenProps) {
           transition={{ duration: 1.5, ease: [0.22, 1, 0.36, 1] }}
           className="h-full w-full bg-cover bg-center"
           style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1757358957218-67e771ec07bb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxnb3VybWV0JTIwZm9vZCUyMHBob3RvZ3JhcGh5fGVufDF8fHx8MTc2NTE0MDQ0Mnww&ixlib=rb-4.1.0&q=80&w=1080')`
+            backgroundImage: `url('${restaurantImage}')`
           }}
         >
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black" />
@@ -107,21 +162,21 @@ export function WinnerScreen({ onNavigate }: WinnerScreenProps) {
                   </div>
                 </div>
               </motion.div>
-              <h1 
+              <h1
                 className="mb-2 bg-gradient-to-r from-white to-orange-100 bg-clip-text text-6xl text-transparent drop-shadow-2xl"
                 style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800 }}
               >
-                Trattoria Luna
+                {restaurantName}
               </h1>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1">
                   <Star className="h-5 w-5 fill-[#F97316] text-[#F97316]" />
-                  <span className="text-lg text-white">4.8</span>
+                  <span className="text-lg text-white">{restaurantRating}</span>
                 </div>
                 <span className="text-gray-400">•</span>
-                <span className="text-lg text-gray-300">Italian</span>
+                <span className="text-lg text-gray-300">{restaurantCuisine}</span>
                 <span className="text-gray-400">•</span>
-                <span className="text-lg text-[#F97316]">$$</span>
+                <span className="text-lg text-[#F97316]">{restaurantPrice}</span>
               </div>
             </motion.div>
           </div>
@@ -130,209 +185,69 @@ export function WinnerScreen({ onNavigate }: WinnerScreenProps) {
 
       {/* Content Section */}
       <div className="relative -mt-6 px-6">
-        {/* Tabs */}
         <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="glassmorphism-premium mb-6 flex rounded-2xl p-1.5 backdrop-blur-xl"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.3 }}
+          className="space-y-4 pb-80"
         >
-          <button
-            onClick={() => setActiveTab('details')}
-            className={`flex-1 rounded-xl px-4 py-3 text-sm transition-all ${
-              activeTab === 'details'
-                ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg'
-                : 'text-gray-400'
-            }`}
-            style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+          {/* Info Cards */}
+          <InfoCard
+            icon={<MapPin className="h-6 w-6 text-[#F97316]" />}
+            label="Address"
+            value="123 Via Roma, Downtown"
+            delay={0.7}
+          />
+
+          <InfoCard
+            icon={<Clock className="h-6 w-6 text-[#F97316]" />}
+            label="Hours Today"
+            value="5:00 PM - 11:00 PM"
+            delay={0.8}
+            badge="Open Now"
+          />
+
+          <InfoCard
+            icon={<Phone className="h-6 w-6 text-[#F97316]" />}
+            label="Contact"
+            value="(555) 123-4567"
+            delay={0.9}
+          />
+
+          {/* Features */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1 }}
+            className="glassmorphism-premium rounded-2xl p-6 backdrop-blur-xl"
           >
-            Details
-          </button>
-          <button
-            onClick={() => setActiveTab('group')}
-            className={`flex-1 rounded-xl px-4 py-3 text-sm transition-all ${
-              activeTab === 'group'
-                ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg'
-                : 'text-gray-400'
-            }`}
-            style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
-          >
-            Group Vote
-          </button>
+            <h3 className="mb-4 flex items-center gap-2 text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+              <Sparkles className="h-5 w-5 text-[#F97316]" />
+              Why We Picked This
+            </h3>
+            <div className="space-y-3">
+              {[
+                'Perfect match for your budget & cuisine preference',
+                'Trending in your area this week',
+                'Excellent ratings from verified diners',
+                'Known for authentic handmade pasta'
+              ].map((feature, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 1.1 + index * 0.1 }}
+                  className="flex items-start gap-3"
+                >
+                  <div className="mt-0.5 rounded-full bg-green-500/20 p-1">
+                    <Check className="h-3 w-3 text-green-400" />
+                  </div>
+                  <span className="text-sm text-gray-300">{feature}</span>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
         </motion.div>
-
-        <AnimatePresence mode="wait">
-          {activeTab === 'details' ? (
-            <motion.div
-              key="details"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.3 }}
-              className="space-y-4 pb-80"
-            >
-              {/* Info Cards */}
-              <InfoCard
-                icon={<MapPin className="h-6 w-6 text-[#F97316]" />}
-                label="Address"
-                value="123 Via Roma, Downtown"
-                delay={0.7}
-              />
-
-              <InfoCard
-                icon={<Clock className="h-6 w-6 text-[#F97316]" />}
-                label="Hours Today"
-                value="5:00 PM - 11:00 PM"
-                delay={0.8}
-                badge="Open Now"
-              />
-
-              <InfoCard
-                icon={<Phone className="h-6 w-6 text-[#F97316]" />}
-                label="Contact"
-                value="(555) 123-4567"
-                delay={0.9}
-              />
-
-              {/* Features */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1 }}
-                className="glassmorphism-premium rounded-2xl p-6 backdrop-blur-xl"
-              >
-                <h3 className="mb-4 flex items-center gap-2 text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
-                  <Sparkles className="h-5 w-5 text-[#F97316]" />
-                  Why We Picked This
-                </h3>
-                <div className="space-y-3">
-                  {[
-                    'Perfect match for your budget & cuisine preference',
-                    'Trending in your area this week',
-                    'Excellent ratings from verified diners',
-                    'Known for authentic handmade pasta'
-                  ].map((feature, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 1.1 + index * 0.1 }}
-                      className="flex items-start gap-3"
-                    >
-                      <div className="mt-0.5 rounded-full bg-green-500/20 p-1">
-                        <Check className="h-3 w-3 text-green-400" />
-                      </div>
-                      <span className="text-sm text-gray-300">{feature}</span>
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="group"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-              className="space-y-4 pb-80"
-            >
-              {/* Group Stats */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="glassmorphism-premium rounded-2xl p-6 backdrop-blur-xl"
-              >
-                <h3 className="mb-6 flex items-center gap-2 text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
-                  <Users className="h-5 w-5 text-[#F97316]" />
-                  Final Results
-                </h3>
-                <div className="flex items-center justify-between">
-                  <div className="text-center">
-                    <motion.p
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ delay: 0.2, type: 'spring', bounce: 0.6 }}
-                      className="mb-1 text-4xl text-[#F97316]"
-                      style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800 }}
-                    >
-                      4/5
-                    </motion.p>
-                    <p className="text-xs text-gray-400">Votes</p>
-                  </div>
-                  <div className="h-16 w-px bg-white/10" />
-                  <div className="text-center">
-                    <motion.p
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ delay: 0.3, type: 'spring', bounce: 0.6 }}
-                      className="mb-1 text-4xl text-[#F97316]"
-                      style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800 }}
-                    >
-                      80%
-                    </motion.p>
-                    <p className="text-xs text-gray-400">Match</p>
-                  </div>
-                  <div className="h-16 w-px bg-white/10" />
-                  <div className="text-center">
-                    <motion.p
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ delay: 0.4, type: 'spring', bounce: 0.6 }}
-                      className="mb-1 text-4xl text-[#F97316]"
-                      style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800 }}
-                    >
-                      4.8
-                    </motion.p>
-                    <p className="text-xs text-gray-400">Rating</p>
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* Individual votes */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="glassmorphism-premium rounded-2xl p-6 backdrop-blur-xl"
-              >
-                <h3 className="mb-4 text-sm text-gray-400">INDIVIDUAL VOTES</h3>
-                <div className="space-y-3">
-                  {[
-                    { name: 'You', voted: true, color: 'from-orange-500 to-red-500' },
-                    { name: 'Sarah', voted: true, color: 'from-purple-500 to-pink-500' },
-                    { name: 'Mike', voted: true, color: 'from-blue-500 to-cyan-500' },
-                    { name: 'Emma', voted: true, color: 'from-green-500 to-emerald-500' },
-                    { name: 'Jake', voted: false, color: 'from-gray-600 to-gray-700' },
-                  ].map((member, index) => (
-                    <motion.div
-                      key={member.name}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.4 + index * 0.1 }}
-                      className="flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`h-10 w-10 rounded-full bg-gradient-to-br ${member.color}`} />
-                        <span className="text-white">{member.name}</span>
-                      </div>
-                      {member.voted ? (
-                        <div className="flex items-center gap-2 rounded-full bg-green-500/20 px-3 py-1">
-                          <Check className="h-4 w-4 text-green-400" />
-                          <span className="text-xs text-green-400">Liked</span>
-                        </div>
-                      ) : (
-                        <div className="rounded-full bg-gray-800 px-3 py-1">
-                          <span className="text-xs text-gray-500">Skipped</span>
-                        </div>
-                      )}
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       {/* Fixed Bottom Actions */}
@@ -379,6 +294,7 @@ export function WinnerScreen({ onNavigate }: WinnerScreenProps) {
         <motion.button
           whileHover={{ scale: 1.01, y: -2 }}
           whileTap={{ scale: 0.99 }}
+          onClick={() => setShowBookingModal(true)}
           className="relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-[#F97316] via-orange-500 to-[#fb923c] py-5 shadow-2xl"
           animate={{
             boxShadow: [
@@ -389,7 +305,7 @@ export function WinnerScreen({ onNavigate }: WinnerScreenProps) {
           }}
           transition={{ duration: 2, repeat: Infinity }}
         >
-          <motion.div 
+          <motion.div
             className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/30 to-white/0"
             animate={{ x: ['-200%', '200%'] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
@@ -409,6 +325,101 @@ export function WinnerScreen({ onNavigate }: WinnerScreenProps) {
           Start New Session
         </button>
       </motion.div>
+
+      {/* Booking Modal */}
+      <AnimatePresence>
+        {showBookingModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            onClick={() => !isBooking && setShowBookingModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md rounded-3xl bg-gradient-to-b from-zinc-900 to-black border border-white/10 p-6"
+            >
+              {bookingSuccess ? (
+                <div className="text-center py-8">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', bounce: 0.5 }}
+                    className="mx-auto mb-4 h-20 w-20 rounded-full bg-green-500/20 flex items-center justify-center"
+                  >
+                    <Check className="h-10 w-10 text-green-400" />
+                  </motion.div>
+                  <h3 className="text-2xl text-white mb-2" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+                    Booking Sent!
+                  </h3>
+                  <p className="text-gray-400">{bookingMessage}</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-2xl text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+                      Book a Table
+                    </h3>
+                    <button
+                      onClick={() => setShowBookingModal(false)}
+                      className="rounded-full p-2 hover:bg-white/10 transition-colors"
+                    >
+                      <X className="h-5 w-5 text-gray-400" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-2">Party Size</label>
+                      <div className="rounded-xl bg-white/5 border border-white/10 px-4 py-3">
+                        <span className="text-white text-lg" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+                          {partySize} {partySize === 1 ? 'person' : 'people'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-2">Date</label>
+                      <input
+                        type="date"
+                        value={bookingDate}
+                        onChange={(e) => setBookingDate(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-white focus:border-[#F97316] focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-2">Time</label>
+                      <input
+                        type="time"
+                        value={bookingTime}
+                        onChange={(e) => setBookingTime(e.target.value)}
+                        className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-white focus:border-[#F97316] focus:outline-none"
+                      />
+                    </div>
+
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleBookReservation}
+                      disabled={isBooking}
+                      className="w-full rounded-xl bg-gradient-to-r from-[#F97316] to-[#fb923c] py-4 text-white disabled:opacity-50"
+                      style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                    >
+                      {isBooking ? 'Booking...' : 'Confirm Booking'}
+                    </motion.button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

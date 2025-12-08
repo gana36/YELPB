@@ -1,10 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lock, Send, Sparkles, Copy, Check, Users, Zap, Bell, MapPin, Apple, ChevronDown, ChevronUp } from 'lucide-react';
+import { MultimodalChat } from './MultimodalChat';
 
 interface LobbyScreenProps {
   sessionCode: string;
-  onNavigate: () => void;
+  onNavigate: (preferences: {
+    cuisine: string;
+    budget: string;
+    vibe: string;
+    dietary: string;
+    distance: string;
+    bookingDate: string;
+    bookingTime: string;
+    partySize: number;
+  }) => void;
 }
 
 const budgetOptions = ['$', '$$', '$$$', '$$$$'];
@@ -13,11 +23,13 @@ const vibeOptions = ['Casual', 'Fine Dining', 'Trendy', 'Cozy', 'Lively', 'Roman
 const dietaryOptions = ['None', 'Vegetarian', 'Vegan', 'Gluten-Free', 'Halal', 'Kosher'];
 const distanceOptions = ['0.5 mi', '1 mi', '2 mi', '5 mi', '10 mi'];
 
-const avatars = [
-  { id: 1, name: 'You', color: 'from-orange-500 to-red-500', active: true },
-  { id: 2, name: 'Sarah', color: 'from-purple-500 to-pink-500', active: true },
-  { id: 3, name: 'Mike', color: 'from-blue-500 to-cyan-500', active: true },
-  { id: 4, name: 'Emma', color: 'from-green-500 to-emerald-500', active: false },
+const userColors = [
+  'from-orange-500 to-red-500',
+  'from-purple-500 to-pink-500',
+  'from-blue-500 to-cyan-500',
+  'from-green-500 to-emerald-500',
+  'from-yellow-500 to-orange-500',
+  'from-pink-500 to-rose-500',
 ];
 
 interface Activity {
@@ -30,79 +42,44 @@ interface Activity {
 }
 
 export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
-  const [budget, setBudget] = useState('$$');
-  const [cuisine, setCuisine] = useState('Italian');
-  const [vibe, setVibe] = useState('Trendy');
+  const [budget, setBudget] = useState('');
+  const [cuisine, setCuisine] = useState('');
+  const [vibe, setVibe] = useState('');
   const [dietary, setDietary] = useState('None');
   const [distance, setDistance] = useState('2 mi');
+  const [bookingDate, setBookingDate] = useState('');
+  const [bookingTime, setBookingTime] = useState('19:00');
+  const [partySize, setPartySize] = useState(2);
   const [locked, setLocked] = useState(false);
   const [copied, setCopied] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const [messages, setMessages] = useState([
-    { id: 1, sender: 'ai', text: 'Welcome! I\'m your Private Dining Strategist. Set your preferences above and I\'ll find the perfect spots. 🎯' },
-  ]);
-  const [message, setMessage] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [isTyping, setIsTyping] = useState(false);
-  const [activities, setActivities] = useState<Activity[]>([
-    { 
-      id: 1, 
-      type: 'join', 
-      user: 'Sarah', 
-      userColor: 'from-purple-500 to-pink-500',
-      message: 'joined the session',
-      timestamp: new Date(Date.now() - 120000)
-    },
-    { 
-      id: 2, 
-      type: 'join', 
-      user: 'Mike', 
-      userColor: 'from-blue-500 to-cyan-500',
-      message: 'joined the session',
-      timestamp: new Date(Date.now() - 90000)
-    },
-  ]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [showNewActivity, setShowNewActivity] = useState(false);
   const [chatMinimized, setChatMinimized] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<Array<{ id: number; name: string; color: string }>>([]);
 
+  // Add initial activity when user joins
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const userName = localStorage.getItem('userName') || 'You';
+    const userColor = userColors[0]; // First user always gets first color
 
-  // Simulate user activities
-  useEffect(() => {
-    const activityTimer = setTimeout(() => {
-      const newActivity: Activity = {
-        id: Date.now(),
-        type: 'preference',
-        user: 'Sarah',
-        userColor: 'from-purple-500 to-pink-500',
-        message: 'set budget to $$$',
-        timestamp: new Date()
-      };
-      setActivities(prev => [...prev, newActivity]);
-      setShowNewActivity(true);
-      setTimeout(() => setShowNewActivity(false), 300);
-    }, 3000);
+    // Set default date to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setBookingDate(tomorrow.toISOString().split('T')[0]);
 
-    const activityTimer2 = setTimeout(() => {
-      const newActivity: Activity = {
-        id: Date.now(),
-        type: 'ready',
-        user: 'Mike',
-        userColor: 'from-blue-500 to-cyan-500',
-        message: 'is ready to swipe!',
-        timestamp: new Date()
-      };
-      setActivities(prev => [...prev, newActivity]);
-      setShowNewActivity(true);
-      setTimeout(() => setShowNewActivity(false), 300);
-    }, 6000);
+    // Add current user to online users
+    setOnlineUsers([{ id: 1, name: userName, color: userColor }]);
 
-    return () => {
-      clearTimeout(activityTimer);
-      clearTimeout(activityTimer2);
+    const joinActivity: Activity = {
+      id: Date.now(),
+      type: 'join',
+      user: userName,
+      userColor: userColor,
+      message: 'joined the session',
+      timestamp: new Date()
     };
+    setActivities([joinActivity]);
   }, []);
 
   const addActivity = (message: string) => {
@@ -132,36 +109,8 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
       setActivities(prev => [...prev, newActivity]);
       setShowNewActivity(true);
       setTimeout(() => setShowNewActivity(false), 300);
-
-      setIsTyping(true);
-      const timer = setTimeout(() => {
-        setIsTyping(false);
-        setMessages(prev => [...prev, {
-          id: Date.now(),
-          sender: 'ai',
-          text: `Perfect setup! ${cuisine}, ${budget}, ${vibe.toLowerCase()}, within ${distance}. ${dietary !== 'None' ? dietary + ' options available.' : ''} Found 12 amazing matches! 🔥`
-        }]);
-      }, 1500);
-      return () => clearTimeout(timer);
     }
-  }, [locked, cuisine, budget, vibe, dietary, distance]);
-
-  const handleSendMessage = () => {
-    if (message.trim()) {
-      setMessages(prev => [...prev, { id: Date.now(), sender: 'user', text: message }]);
-      setMessage('');
-      
-      setIsTyping(true);
-      setTimeout(() => {
-        setIsTyping(false);
-        setMessages(prev => [...prev, {
-          id: Date.now() + 1,
-          sender: 'ai',
-          text: 'Great question! I\'ll prioritize that in our recommendations. 👍'
-        }]);
-      }, 1000);
-    }
-  };
+  }, [locked]);
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(sessionCode);
@@ -227,22 +176,25 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
         <div className="flex items-center justify-center gap-2">
           <Users className="h-3 w-3 text-gray-400" />
           <div className="flex -space-x-2">
-            {avatars.map((avatar, index) => (
+            {onlineUsers.map((user, index) => (
               <motion.div
-                key={avatar.id}
+                key={user.id}
                 initial={{ scale: 0, x: -20 }}
                 animate={{ scale: 1, x: 0 }}
                 transition={{ delay: index * 0.1 }}
-                className="relative"
+                className="relative group"
+                title={user.name}
               >
-                <div className={`h-7 w-7 rounded-full bg-gradient-to-br ${avatar.color} ring-2 ring-black ${!avatar.active && 'opacity-50'}`} />
-                {avatar.active && (
-                  <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-black bg-green-500" />
-                )}
+                <div className={`h-7 w-7 rounded-full bg-gradient-to-br ${user.color} ring-2 ring-black flex items-center justify-center`}>
+                  <span className="text-[10px] font-bold text-white" style={{ fontFamily: 'Montserrat, sans-serif' }}>
+                    {user.name.substring(0, 2).toUpperCase()}
+                  </span>
+                </div>
+                <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-black bg-green-500" />
               </motion.div>
             ))}
           </div>
-          <span className="text-xs text-gray-400">{avatars.filter(a => a.active).length} online</span>
+          <span className="text-xs text-gray-400">{onlineUsers.length} online</span>
         </div>
       </motion.div>
 
@@ -440,6 +392,92 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
             )}
           </CompactPreference>
 
+          {/* Party Size */}
+          <CompactPreference label="PARTY SIZE" icon="👥" value={`${partySize} ${partySize === 1 ? 'person' : 'people'}`} locked={locked}>
+            {!locked && (
+              <div className="flex gap-1.5">
+                {[1, 2, 3, 4, 5, 6, 8].map(size => (
+                  <motion.button
+                    key={size}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => {
+                      setPartySize(size);
+                      addActivity(`set party size to ${size}`);
+                    }}
+                    className={`flex-1 rounded-lg px-2 py-2 text-xs transition-all ${
+                      partySize === size
+                        ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
+                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                    }`}
+                    style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                  >
+                    {size}
+                  </motion.button>
+                ))}
+              </div>
+            )}
+          </CompactPreference>
+
+          {/* Date & Time */}
+          <motion.div
+            whileHover={!locked ? { scale: 1.005 } : {}}
+            className="glassmorphism-premium rounded-xl p-3 backdrop-blur-xl transition-all relative overflow-visible"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">📅</span>
+                <span className="text-xs tracking-wider text-gray-400">DATE & TIME</span>
+              </div>
+              {locked && (
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }}>
+                  <Lock className="h-3 w-3 text-[#F97316]" />
+                </motion.div>
+              )}
+            </div>
+            {!locked ? (
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={bookingDate}
+                  onChange={(e) => {
+                    setBookingDate(e.target.value);
+                    addActivity(`set date to ${e.target.value}`);
+                  }}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white focus:border-[#F97316] focus:outline-none"
+                  style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}
+                />
+                <input
+                  type="time"
+                  value={bookingTime}
+                  onChange={(e) => {
+                    setBookingTime(e.target.value);
+                    addActivity(`set time to ${e.target.value}`);
+                  }}
+                  className="w-24 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white focus:border-[#F97316] focus:outline-none"
+                  style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}
+                />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <motion.div
+                  key={`${bookingDate}-${bookingTime}`}
+                  initial={{ y: -8, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="flex-1 rounded-lg p-2 text-center transition-all bg-gradient-to-r from-[#F97316]/20 to-orange-600/20 shadow-[0_0_20px_rgba(249,115,22,0.15)]"
+                >
+                  <span
+                    className="text-sm text-[#F97316]"
+                    style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800 }}
+                  >
+                    {new Date(bookingDate).toLocaleDateString()} at {bookingTime}
+                  </span>
+                </motion.div>
+              </div>
+            )}
+          </motion.div>
+
           {/* Action Button */}
           {!locked ? (
             <motion.button
@@ -464,7 +502,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
             <motion.button
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
-              onClick={onNavigate}
+              onClick={() => onNavigate({ cuisine, budget, vibe, dietary, distance, bookingDate, bookingTime, partySize })}
               className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#F97316] via-orange-500 to-[#fb923c] py-3 shadow-xl shadow-orange-500/40"
               animate={{
                 boxShadow: [
@@ -486,126 +524,37 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
         </div>
       </div>
 
-      {/* Fixed AI Assistant at Bottom */}
-      <motion.div
-        initial={{ y: 100, opacity: 0 }}
-        animate={{ 
-          y: 0, 
-          opacity: 1,
-          height: chatMinimized ? 'auto' : '16rem'
+      {/* Fixed AI Assistant at Bottom - Now with Multimodal Support */}
+      <MultimodalChat
+        preferences={{
+          cuisine,
+          budget,
+          vibe,
+          distance,
+          dietary
         }}
-        transition={{ delay: 0.4, height: { duration: 0.3 } }}
-        className={`relative z-20 flex flex-shrink-0 flex-col border-t border-white/10 bg-zinc-950/95 backdrop-blur-xl ${chatMinimized ? 'h-auto' : 'h-64'}`}
-      >
-        <button
-          onClick={() => setChatMinimized(!chatMinimized)}
-          className="w-full border-b border-white/5 bg-gradient-to-r from-orange-500/10 to-transparent px-4 py-2.5 transition-colors hover:from-orange-500/15"
-        >
-          <div className="flex items-center gap-2">
-            <motion.div animate={{ rotate: [0, 360] }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}>
-              <Sparkles className="h-4 w-4 text-[#F97316]" />
-            </motion.div>
-            <div className="flex-1 text-left">
-              <h3 className="text-sm text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
-                Private Strategist
-              </h3>
-              <p className="text-xs text-gray-500">AI-Powered Assistant</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 rounded-full bg-green-500/20 px-2 py-0.5">
-                <div className="h-1 w-1 animate-pulse rounded-full bg-green-400" />
-                <span className="text-xs text-green-400">Active</span>
-              </div>
-              <motion.div
-                animate={{ rotate: chatMinimized ? 180 : 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <ChevronDown className="h-4 w-4 text-gray-400" />
-              </motion.div>
-            </div>
-          </div>
-        </button>
-
-        <AnimatePresence>
-          {!chatMinimized && (
-            <>
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="flex-1 space-y-2 overflow-y-auto p-3"
-              >
-                <AnimatePresence mode="popLayout">
-                  {messages.map((msg) => (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
-                          msg.sender === 'ai'
-                            ? 'bg-zinc-900 text-green-400 shadow-lg shadow-green-500/5'
-                            : 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/20'
-                        }`}
-                        style={msg.sender === 'ai' ? { fontFamily: 'monospace', fontSize: '0.8rem' } : { fontSize: '0.85rem' }}
-                      >
-                        {msg.text}
-                      </div>
-                    </motion.div>
-                  ))}
-                  {isTyping && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                      <div className="flex items-center gap-2 rounded-xl bg-zinc-900 px-3 py-2">
-                        <div className="flex gap-1">
-                          {[0, 1, 2].map((i) => (
-                            <motion.div
-                              key={i}
-                              className="h-1.5 w-1.5 rounded-full bg-green-400"
-                              animate={{ y: [0, -4, 0] }}
-                              transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-                <div ref={messagesEndRef} />
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="border-t border-white/5 bg-black/40 p-3"
-              >
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Ask anything..."
-                    className="flex-1 rounded-lg bg-zinc-900/80 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none transition-all focus:bg-zinc-900 focus:ring-2 focus:ring-orange-500/50"
-                  />
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleSendMessage}
-                    disabled={!message.trim()}
-                    className="rounded-lg bg-gradient-to-r from-[#F97316] to-[#fb923c] p-2 shadow-lg shadow-orange-500/30 transition-all disabled:opacity-40"
-                  >
-                    <Send className="h-4 w-4 text-white" />
-                  </motion.button>
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
-      </motion.div>
+        minimized={chatMinimized}
+        onToggleMinimized={() => setChatMinimized(!chatMinimized)}
+        onPreferencesDetected={(prefs) => {
+          // Auto-populate preferences from AI analysis
+          if (prefs.cuisine) {
+            setCuisine(prefs.cuisine);
+            addActivity(`AI suggested ${prefs.cuisine} cuisine`);
+          }
+          if (prefs.budget) {
+            setBudget(prefs.budget);
+            addActivity(`AI suggested ${prefs.budget} budget`);
+          }
+          if (prefs.vibe) {
+            setVibe(prefs.vibe);
+            addActivity(`AI suggested ${prefs.vibe} vibe`);
+          }
+          if (prefs.dietary) {
+            setDietary(prefs.dietary);
+            addActivity(`AI suggested ${prefs.dietary} dietary preference`);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -645,11 +594,11 @@ function CompactPreference({ label, icon, value, locked, children }: {
               : 'bg-white/5'
           }`}
         >
-          <span 
-            className={`text-lg ${locked ? 'text-[#F97316]' : 'text-white'}`}
-            style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800 }}
+          <span
+            className={`text-lg ${locked ? 'text-[#F97316]' : value ? 'text-white' : 'text-gray-500'}`}
+            style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: value ? 800 : 400 }}
           >
-            {value}
+            {value || '—'}
           </span>
         </motion.div>
         {children}

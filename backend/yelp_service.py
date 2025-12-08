@@ -255,6 +255,43 @@ class YelpAIService:
         )
         return response.businesses
 
+    async def book_reservation(
+        self,
+        business_name: str,
+        party_size: int,
+        date: str,
+        time: str,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        locale: str = "en_US"
+    ) -> ChatResponse:
+        """
+        Book a reservation at a restaurant using Yelp AI
+
+        Args:
+            business_name: Name of the restaurant
+            party_size: Number of people
+            date: Date in format YYYY-MM-DD
+            time: Time in format HH:MM (24-hour)
+            latitude: User's latitude
+            longitude: User's longitude
+            locale: User's locale
+
+        Returns:
+            ChatResponse with booking confirmation or instructions
+        """
+        query = f"Book a table for {party_size} people at {business_name} on {date} at {time}"
+
+        response = await self.chat(
+            query=query,
+            latitude=latitude,
+            longitude=longitude,
+            locale=locale
+        )
+
+        logger.info(f"Booking request: {query}")
+        return response
+
 
 # Create a singleton instance
 yelp_service = YelpAIService()
