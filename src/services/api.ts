@@ -180,6 +180,36 @@ class ApiService {
     });
   }
 
+  async analyzePreferences(textQuery: string): Promise<any> {
+    return this.request('/api/gemini/analyze-preferences', {
+      method: 'POST',
+      body: JSON.stringify({
+        text_query: textQuery,
+      }),
+    });
+  }
+
+  async bookReservation(
+    businessName: string,
+    partySize: number,
+    date: string,
+    time: string,
+    latitude?: number,
+    longitude?: number
+  ): Promise<any> {
+    return this.request('/api/yelp/book-reservation', {
+      method: 'POST',
+      body: JSON.stringify({
+        business_name: businessName,
+        party_size: partySize,
+        date,
+        time,
+        latitude,
+        longitude,
+      }),
+    });
+  }
+
   async startCalendarAuth(userId: string): Promise<{ auth_url: string; state: string }> {
     return this.request(`/api/calendar/auth/start?user_id=${userId}`, {
       method: 'GET',

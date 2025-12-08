@@ -9,10 +9,26 @@ import { PageTransition } from './components/PageTransition';
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'welcome' | 'lobby' | 'swipe' | 'winner'>('welcome');
   const [sessionCode, setSessionCode] = useState('');
+  const [preferences, setPreferences] = useState({
+    cuisine: '',
+    budget: '',
+    vibe: '',
+    dietary: 'None',
+    distance: '2 mi',
+    bookingDate: '',
+    bookingTime: '19:00',
+    partySize: 2
+  });
+  const [winnerRestaurant, setWinnerRestaurant] = useState<any>(null);
 
   const handleStartSession = (code: string) => {
     setSessionCode(code);
     setCurrentScreen('lobby');
+  };
+
+  const handleStartSwiping = (prefs: typeof preferences) => {
+    setPreferences(prefs);
+    setCurrentScreen('swipe');
   };
 
   return (
@@ -25,17 +41,31 @@ export default function App() {
         )}
         {currentScreen === 'lobby' && (
           <PageTransition key="lobby">
-            <LobbyScreen sessionCode={sessionCode} onNavigate={() => setCurrentScreen('swipe')} />
+            <LobbyScreen sessionCode={sessionCode} onNavigate={handleStartSwiping} />
           </PageTransition>
         )}
         {currentScreen === 'swipe' && (
           <PageTransition key="swipe">
-            <SwipeScreen onNavigate={() => setCurrentScreen('winner')} />
+            <SwipeScreen
+              preferences={preferences}
+              onNavigate={(winner) => {
+                setWinnerRestaurant(winner);
+                setCurrentScreen('winner');
+              }}
+            />
           </PageTransition>
         )}
         {currentScreen === 'winner' && (
           <PageTransition key="winner">
-            <WinnerScreen onNavigate={() => setCurrentScreen('welcome')} />
+            <WinnerScreen
+              restaurant={winnerRestaurant}
+              preferences={{
+                bookingDate: preferences.bookingDate,
+                bookingTime: preferences.bookingTime,
+                partySize: preferences.partySize
+              }}
+              onNavigate={() => setCurrentScreen('welcome')}
+            />
           </PageTransition>
         )}
       </AnimatePresence>

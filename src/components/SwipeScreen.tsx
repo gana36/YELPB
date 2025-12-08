@@ -6,7 +6,14 @@ import { useGeolocation } from '../hooks/useGeolocation';
 import { Business } from '../services/api';
 
 interface SwipeScreenProps {
-  onNavigate: () => void;
+  onNavigate: (winner: Restaurant | null) => void;
+  preferences?: {
+    cuisine: string;
+    budget: string;
+    vibe: string;
+    dietary: string;
+    distance: string;
+  };
 }
 
 interface Restaurant {
@@ -28,23 +35,21 @@ interface LikedRestaurant {
   timestamp: number;
 }
 
-export function SwipeScreen({ onNavigate }: SwipeScreenProps) {
+export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState<'left' | 'right' | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [likedRestaurants, setLikedRestaurants] = useState<LikedRestaurant[]>([]);
   const [showYumAnimation, setShowYumAnimation] = useState(false);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const { businesses, loading, error, search } = useYelpSearch();
   const { location, requestLocation, error: locationError } = useGeolocation(false);
 
   useEffect(() => {
     requestLocation();
-    const timer = setTimeout(() => {
-      fetchRestaurants(location?.latitude, location?.longitude);
-    }, 2000);
-    return () => clearTimeout(timer);
+    fetchRestaurants(location?.latitude, location?.longitude);
   }, []);
 
   useEffect(() => {
@@ -54,14 +59,59 @@ export function SwipeScreen({ onNavigate }: SwipeScreenProps) {
   }, [location]);
 
   const fetchRestaurants = async (lat?: number, lng?: number) => {
-    const results = await search({
-      query: 'restaurants',
-      latitude: lat || 37.7749,
-      longitude: lng || -122.4194,
-      locale: 'en_US',
-    });
+    // Build query from preferences
+    const queryParts = [];
+    if (preferences?.cuisine) queryParts.push(preferences.cuisine);
+    if (preferences?.vibe) queryParts.push(preferences.vibe);
+    if (preferences?.dietary && preferences.dietary !== 'None') queryParts.push(preferences.dietary);
 
-    const formattedRestaurants: Restaurant[] = results.map((business) => ({
+    // Build natural query for Yelp AI
+    let baseQuery = 'restaurants';
+    if (queryParts.length > 0) {
+      baseQuery = `${queryParts.join(' ')} restaurants`;
+    }
+
+    console.log('Searching Yelp with preferences:', { baseQuery, preferences });
+
+    // Make multiple queries with different variations to get more results
+    const queries = [
+      baseQuery,
+      `best ${baseQuery}`,
+      `top rated ${baseQuery}`,
+      `popular ${baseQuery}`,
+    ];
+
+    const allResults: Business[] = [];
+    const seenIds = new Set<string>();
+
+    // Fetch from multiple query variations
+    for (const query of queries) {
+      try {
+        const results = await search({
+          query,
+          latitude: lat || 37.7749,
+          longitude: lng || -122.4194,
+          locale: 'en_US',
+        });
+
+        // Add unique results only
+        for (const business of results) {
+          if (!seenIds.has(business.id)) {
+            seenIds.add(business.id);
+            allResults.push(business);
+          }
+        }
+
+        // Stop if we have enough restaurants
+        if (allResults.length >= 12) break;
+      } catch (err) {
+        console.error('Error fetching restaurants:', err);
+      }
+    }
+
+    console.log(`Fetched ${allResults.length} unique restaurants from ${queries.length} queries`);
+
+    const formattedRestaurants: Restaurant[] = allResults.map((business) => ({
       id: business.id,
       name: business.name,
       image: business.image || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4',
@@ -75,14 +125,66 @@ export function SwipeScreen({ onNavigate }: SwipeScreenProps) {
     }));
 
     setRestaurants(formattedRestaurants);
+    setIsInitialLoad(false);
   };
 
-  if (loading) {
+  if (loading || isInitialLoad) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-black">
         <div className="text-center">
-          <Loader2 className="mx-auto h-12 w-12 animate-spin text-[#F97316]" />
-          <p className="mt-4 text-white">Loading restaurants...</p>
+          {/* Outer pulsing circle */}
+          <motion.div
+            animate={{
+              scale: [1, 1.2, 1],
+              opacity: [0.3, 0.6, 0.3],
+            }}
+            transition={{
+              duration: 2,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+            className="mx-auto h-24 w-24 rounded-full bg-[#F97316]/20"
+          />
+
+          {/* Spinning circle */}
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            className="mx-auto -mt-24 h-16 w-16 rounded-full border-4 border-gray-800 border-t-[#F97316]"
+            style={{
+              filter: 'drop-shadow(0 0 8px rgba(249, 115, 22, 0.5))',
+            }}
+          />
+
+          {/* Loading text with fade animation */}
+          <motion.p
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            className="mt-8 text-lg text-white"
+            style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}
+          >
+            Finding perfect restaurants...
+          </motion.p>
+
+          {/* Progress dots */}
+          <div className="mt-4 flex justify-center gap-2">
+            {[0, 1, 2].map((i) => (
+              <motion.div
+                key={i}
+                animate={{
+                  scale: [1, 1.5, 1],
+                  opacity: [0.3, 1, 0.3],
+                }}
+                transition={{
+                  duration: 1.5,
+                  repeat: Infinity,
+                  delay: i * 0.2,
+                  ease: 'easeInOut',
+                }}
+                className="h-2 w-2 rounded-full bg-[#F97316]"
+              />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -134,7 +236,11 @@ export function SwipeScreen({ onNavigate }: SwipeScreenProps) {
 
     setTimeout(() => {
       if (currentIndex === restaurants.length - 1) {
-        onNavigate();
+        // Find the most liked restaurant (or just pick the first liked one)
+        const winner = likedRestaurants.length > 0
+          ? restaurants.find(r => r.id.toString() === likedRestaurants[0].id) || null
+          : null;
+        onNavigate(winner);
       } else {
         setCurrentIndex(currentIndex + 1);
         setDirection(null);

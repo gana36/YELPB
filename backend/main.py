@@ -133,6 +133,54 @@ async def search_businesses(request: SearchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/yelp/book-reservation")
+async def book_reservation(request: dict):
+    """
+    Book a reservation at a restaurant using Yelp AI
+
+    Args:
+        request: Dict with business_name, party_size, date, time, latitude, longitude
+
+    Returns:
+        Booking confirmation or instructions from Yelp AI
+    """
+    try:
+        business_name = request.get('business_name')
+        party_size = request.get('party_size', 2)
+        date = request.get('date')
+        time = request.get('time')
+        latitude = request.get('latitude')
+        longitude = request.get('longitude')
+
+        if not business_name or not date or not time:
+            raise HTTPException(status_code=400, detail="Missing required fields: business_name, date, time")
+
+        response = await yelp_service.book_reservation(
+            business_name=business_name,
+            party_size=party_size,
+            date=date,
+            time=time,
+            latitude=latitude,
+            longitude=longitude
+        )
+
+        logger.info(f"Booking reservation at {business_name} for {party_size} on {date} at {time}")
+        return {
+            "success": True,
+            "message": response.response_text,
+            "booking_details": {
+                "business_name": business_name,
+                "party_size": party_size,
+                "date": date,
+                "time": time
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error booking reservation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Gemini Multimodal Endpoints
 
 @app.post("/api/gemini/process-audio", response_model=GeminiResponse)
@@ -299,6 +347,40 @@ async def transcribe_audio(request: AudioProcessRequest):
 
     except Exception as e:
         logger.error(f"Error transcribing audio: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/gemini/analyze-preferences")
+async def analyze_preferences(request: dict):
+    """
+    Analyze text to extract preferences only (NO Yelp search)
+
+    Used by the chat interface to help users set their preferences
+    through natural language without triggering restaurant searches.
+
+    Args:
+        request: Dict with 'text_query' field
+
+    Returns:
+        Extracted preferences (cuisine, price, vibe, dietary)
+    """
+    try:
+        text_query = request.get('text_query', '')
+
+        if not text_query:
+            return {
+                "success": False,
+                "error": "No text_query provided"
+            }
+
+        # Analyze with Gemini (no Yelp search)
+        result = await gemini_service.analyze_preferences(text_query)
+
+        logger.info(f"Preferences analyzed: {text_query}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Error analyzing preferences: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

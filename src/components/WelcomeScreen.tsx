@@ -9,15 +9,36 @@ interface WelcomeScreenProps {
 export function WelcomeScreen({ onNavigate }: WelcomeScreenProps) {
   const [showJoinInput, setShowJoinInput] = useState(false);
   const [joinCode, setJoinCode] = useState('');
+  const [showNameInput, setShowNameInput] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [isHost, setIsHost] = useState(false);
 
   const handleHostSession = () => {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    onNavigate(code);
+    setIsHost(true);
+    setShowNameInput(true);
+  };
+
+  const handleJoinClick = () => {
+    setIsHost(false);
+    setShowJoinInput(true);
   };
 
   const handleJoinSession = () => {
     if (joinCode.trim()) {
-      onNavigate(joinCode.trim().toUpperCase());
+      setShowNameInput(true);
+    }
+  };
+
+  const handleContinue = () => {
+    if (userName.trim()) {
+      if (isHost) {
+        const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+        localStorage.setItem('userName', userName.trim());
+        onNavigate(code);
+      } else {
+        localStorage.setItem('userName', userName.trim());
+        onNavigate(joinCode.trim().toUpperCase());
+      }
     }
   };
 
@@ -123,7 +144,53 @@ export function WelcomeScreen({ onNavigate }: WelcomeScreenProps) {
 
           {/* Buttons */}
           <div className="flex flex-col gap-4">
-            {!showJoinInput ? (
+            {showNameInput ? (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="space-y-3"
+              >
+                <div className="mb-4 text-center">
+                  <h3 className="text-lg text-white mb-1" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+                    What&apos;s your name?
+                  </h3>
+                  <p className="text-sm text-gray-400">
+                    {isHost ? 'Let your friends know who\'s hosting!' : `Joining room ${joinCode}`}
+                  </p>
+                </div>
+                <input
+                  type="text"
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleContinue()}
+                  placeholder="Enter your name"
+                  maxLength={20}
+                  className="w-full rounded-2xl border-2 border-orange-500/50 bg-black/40 px-6 py-4 text-center text-xl text-white placeholder-gray-500 outline-none backdrop-blur-sm transition-all focus:border-orange-500 focus:shadow-lg focus:shadow-orange-500/30"
+                  style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setShowNameInput(false);
+                      setUserName('');
+                      if (!isHost) setShowJoinInput(true);
+                    }}
+                    className="flex-1 rounded-xl border border-white/30 bg-white/5 px-4 py-3 text-sm text-gray-300 transition-colors hover:bg-white/10"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={handleContinue}
+                    disabled={userName.trim().length < 2}
+                    className="flex-1 rounded-xl bg-gradient-to-r from-[#F97316] to-[#fb923c] px-4 py-3 text-sm text-white shadow-lg shadow-orange-500/30 transition-all disabled:opacity-40 disabled:shadow-none"
+                    style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </motion.div>
+            ) : !showJoinInput ? (
               <>
                 <motion.button
                   whileHover={{ scale: 1.02, y: -2 }}
@@ -153,7 +220,7 @@ export function WelcomeScreen({ onNavigate }: WelcomeScreenProps) {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.7 }}
-                  onClick={() => setShowJoinInput(true)}
+                  onClick={handleJoinClick}
                   className="group rounded-2xl border-2 border-white/30 bg-white/5 px-8 py-5 backdrop-blur-md transition-all hover:border-orange-400/50 hover:bg-white/10"
                 >
                   <div className="flex items-center justify-center gap-3">

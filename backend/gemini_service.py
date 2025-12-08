@@ -299,6 +299,59 @@ class GeminiService:
             logger.error(f"Error in multimodal search: {str(e)}")
             raise Exception(f"Failed to process multimodal search: {str(e)}")
 
+    async def analyze_preferences(
+        self,
+        text_query: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze text to extract restaurant preferences only (NO Yelp search)
+
+        Args:
+            text_query: User's text describing preferences
+
+        Returns:
+            Dictionary with extracted preferences
+        """
+        try:
+            prompt = f"""
+            Analyze this user message and extract restaurant preferences ONLY.
+
+            User message: "{text_query}"
+
+            Extract the following if mentioned:
+            - cuisine_preferences: array of cuisine types (e.g., ["Italian", "Japanese"])
+            - price_range: one of "$", "$$", "$$$", "$$$$" based on keywords like cheap/expensive/moderate
+            - ambiance_preferences: dining vibe (e.g., "Casual", "Romantic", "Trendy", "Fine Dining")
+            - dietary_restrictions: array of dietary needs (e.g., ["Vegetarian", "Vegan", "Gluten-Free"])
+            - user_intent: brief summary of what they're looking for
+
+            IMPORTANT: Only extract preferences that are explicitly mentioned. Don't make assumptions.
+            If nothing is mentioned, return empty arrays/null values.
+
+            Format response as JSON with these fields only.
+            """
+
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=[prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+
+            result = response.text
+            logger.info(f"Preferences analyzed: {text_query}")
+
+            return {
+                "success": True,
+                "result": result,
+                "raw_response": response.text
+            }
+
+        except Exception as e:
+            logger.error(f"Error analyzing preferences: {str(e)}")
+            raise Exception(f"Failed to analyze preferences: {str(e)}")
+
 
 # Create singleton instance
 gemini_service = GeminiService()
