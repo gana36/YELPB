@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lock, Send, Sparkles, Copy, Check, Users, Zap, Bell, MapPin, Apple, ChevronDown, ChevronUp } from 'lucide-react';
 import { MultimodalChat } from './MultimodalChat';
+import { sessionService, SessionUser, UserVote } from '../services/sessionService';
 
 interface LobbyScreenProps {
   sessionCode: string;
@@ -56,31 +57,100 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [showNewActivity, setShowNewActivity] = useState(false);
   const [chatMinimized, setChatMinimized] = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState<Array<{ id: number; name: string; color: string }>>([]);
+  const [onlineUsers, setOnlineUsers] = useState<SessionUser[]>([]);
+  const [currentUserId] = useState(() => `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+  const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
 
-  // Add initial activity when user joins
+  // Multi-user voting state from Firebase
+  const [userVotes, setUserVotes] = useState<{
+    budget: Record<string, UserVote[]>;
+    cuisine: Record<string, UserVote[]>;
+    vibe: Record<string, UserVote[]>;
+    dietary: Record<string, UserVote[]>;
+    distance: Record<string, UserVote[]>;
+  }>({
+    budget: {},
+    cuisine: {},
+    vibe: {},
+    dietary: {},
+    distance: {}
+  });
+
+  // Firebase: Join session and subscribe to updates
   useEffect(() => {
     const userName = localStorage.getItem('userName') || 'You';
-    const userColor = userColors[0]; // First user always gets first color
+    const userColorIndex = Math.floor(Math.random() * userColors.length);
+    const userColor = userColors[userColorIndex];
 
     // Set default date to tomorrow
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     setBookingDate(tomorrow.toISOString().split('T')[0]);
 
-    // Add current user to online users
-    setOnlineUsers([{ id: 1, name: userName, color: userColor }]);
-
-    const joinActivity: Activity = {
-      id: Date.now(),
-      type: 'join',
-      user: userName,
-      userColor: userColor,
-      message: 'joined the session',
-      timestamp: new Date()
+    // Join Firebase session
+    const currentUser: SessionUser = {
+      id: currentUserId,
+      name: userName,
+      color: userColor,
+      joinedAt: Date.now()
     };
-    setActivities([joinActivity]);
-  }, []);
+
+    console.log('🔥 Joining Firebase session:', sessionCode, 'as', currentUser);
+    sessionService.joinSession(sessionCode, currentUser).catch(err => {
+      console.error('❌ Failed to join session:', err);
+    });
+
+    // Subscribe to users
+    const unsubscribeUsers = sessionService.subscribeToUsers(sessionCode, (users) => {
+      console.log('👥 Users updated:', users);
+      setOnlineUsers(users);
+    });
+
+    // Subscribe to activities
+    const unsubscribeActivities = sessionService.subscribeToActivities(sessionCode, (acts) => {
+      const formattedActivities: Activity[] = acts.map(act => ({
+        id: act.timestamp,
+        type: act.type,
+        user: act.user,
+        userColor: act.userColor,
+        message: act.message,
+        timestamp: new Date(act.timestamp)
+      }));
+      setActivities(formattedActivities);
+      if (formattedActivities.length > 0) {
+        setShowNewActivity(true);
+        setTimeout(() => setShowNewActivity(false), 300);
+      }
+    });
+
+    // Subscribe to session votes and users from main document
+    const unsubscribeSession = sessionService.subscribeToSession(sessionCode, (data) => {
+      if (data.votes) {
+        setUserVotes(data.votes);
+      }
+      if (data.locked !== undefined) {
+        setLocked(data.locked);
+      }
+      // Also get users from main document (backup method)
+      if (data.users) {
+        const usersArray = Object.values(data.users) as SessionUser[];
+        console.log('👥 Users from main document:', usersArray);
+        if (usersArray.length > 0) {
+          setOnlineUsers(usersArray);
+        }
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      unsubscribeUsers();
+      unsubscribeActivities();
+      unsubscribeSession();
+      sessionService.leaveSession(sessionCode, currentUserId).catch(err => {
+        console.error('Failed to leave session:', err);
+      });
+    };
+  }, [sessionCode, currentUserId]);
 
   const addActivity = (message: string) => {
     const newActivity: Activity = {
@@ -94,6 +164,29 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
     setActivities(prev => [...prev, newActivity]);
     setShowNewActivity(true);
     setTimeout(() => setShowNewActivity(false), 300);
+  };
+
+  // Update vote tracking when user selects a preference (Firebase)
+  const updateVote = async (category: keyof typeof userVotes, value: string) => {
+    const userName = localStorage.getItem('userName') || 'You';
+    try {
+      await sessionService.castVote(sessionCode, category, value, {
+        id: currentUserId,
+        name: userName
+      });
+    } catch (error) {
+      console.error('Failed to cast vote:', error);
+    }
+  };
+
+  // Get vote count for an option
+  const getVoteCount = (category: keyof typeof userVotes, value: string): number => {
+    return (userVotes[category][value] || []).length;
+  };
+
+  // Get voters for an option
+  const getVoters = (category: keyof typeof userVotes, value: string): string[] => {
+    return (userVotes[category][value] || []).map(v => v.userName);
   };
 
   useEffect(() => {
@@ -182,15 +275,33 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                 initial={{ scale: 0, x: -20 }}
                 animate={{ scale: 1, x: 0 }}
                 transition={{ delay: index * 0.1 }}
-                className="relative group"
-                title={user.name}
+                className="relative"
+                style={{ zIndex: hoveredUserId === user.id ? 50 : 10 }}
+                onMouseEnter={() => setHoveredUserId(user.id)}
+                onMouseLeave={() => setHoveredUserId(null)}
               >
-                <div className={`h-7 w-7 rounded-full bg-gradient-to-br ${user.color} ring-2 ring-black flex items-center justify-center`}>
+                <div className={`h-7 w-7 rounded-full bg-gradient-to-br ${user.color} ring-2 ${hoveredUserId === user.id ? 'ring-[#F97316]' : 'ring-black'} flex items-center justify-center cursor-pointer transition-all duration-200 ${hoveredUserId === user.id ? 'scale-110' : 'scale-100'}`}>
                   <span className="text-[10px] font-bold text-white" style={{ fontFamily: 'Montserrat, sans-serif' }}>
                     {user.name.substring(0, 2).toUpperCase()}
                   </span>
                 </div>
                 <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-black bg-green-500" />
+
+                {/* Tooltip */}
+                {hoveredUserId === user.id && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 pointer-events-none"
+                  >
+                    <div className="bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-xl shadow-orange-500/50 whitespace-nowrap">
+                      {user.name}
+                    </div>
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-0.5">
+                      <div className="border-[5px] border-transparent border-t-[#F97316]" />
+                    </div>
+                  </motion.div>
+                )}
               </motion.div>
             ))}
           </div>
@@ -243,6 +354,50 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
         </div>
       </motion.div>
 
+      {/* Group Consensus Summary */}
+      {onlineUsers.length > 1 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative z-10 px-4 pt-3"
+        >
+          <div className="glassmorphism-premium overflow-hidden rounded-xl backdrop-blur-xl border border-orange-500/20">
+            <div className="bg-gradient-to-r from-orange-500/20 to-transparent px-3 py-2 border-b border-white/5">
+              <div className="flex items-center gap-2">
+                <Users className="h-3.5 w-3.5 text-[#F97316]" />
+                <h3 className="text-xs text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+                  GROUP CONSENSUS
+                </h3>
+              </div>
+            </div>
+            <div className="p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <div className="flex-shrink-0 mt-0.5">
+                  <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-[10px] text-red-400 font-semibold mb-0.5">MUST-HAVES</p>
+                  <p className="text-xs text-gray-300">
+                    Budget max: {budget || '—'} • Distance: {distance} • Dietary: {dietary}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="flex-shrink-0 mt-0.5">
+                  <div className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-[10px] text-yellow-400 font-semibold mb-0.5">PREFERENCES</p>
+                  <p className="text-xs text-gray-300">
+                    Cuisine: {cuisine || '—'} • Vibe: {vibe || '—'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Scrollable Preferences Section */}
       <div className="relative z-10 flex-1 overflow-y-auto px-4 py-3">
         <div className="space-y-2.5 pb-4">
@@ -255,25 +410,39 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
           >
             {!locked && (
               <div className="flex gap-1.5">
-                {budgetOptions.map(opt => (
-                  <motion.button
-                    key={opt}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => {
-                      setBudget(opt);
-                      addActivity(`set budget to ${opt}`);
-                    }}
-                    className={`flex-1 rounded-lg px-2.5 py-2 text-sm transition-all ${
-                      budget === opt 
-                        ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30' 
+                {budgetOptions.map(opt => {
+                  const voteCount = getVoteCount('budget', opt);
+                  const voters = getVoters('budget', opt);
+                  return (
+                    <motion.button
+                      key={opt}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => {
+                        setBudget(opt);
+                        updateVote('budget', opt);
+                        addActivity(`voted for ${opt} budget`);
+                      }}
+                      className={`relative flex-1 rounded-lg px-2.5 py-2 text-sm transition-all ${
+                        budget === opt
+                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
                         : 'bg-white/5 text-gray-400 hover:bg-white/10'
                     }`}
                     style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
                   >
                     {opt}
+                    {voteCount > 0 && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
+                      >
+                        {voteCount}
+                      </motion.div>
+                    )}
                   </motion.button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CompactPreference>
@@ -283,25 +452,38 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
             {!locked && (
               <div className="w-full -mr-3">
                 <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  {cuisineOptions.map(opt => (
-                    <motion.button
-                      key={opt}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => {
-                        setCuisine(opt);
-                        addActivity(`prefers ${opt} cuisine`);
-                      }}
-                      className={`flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
-                        cuisine === opt 
-                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30' 
-                          : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                      }`}
-                      style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
-                    >
-                      {opt}
-                    </motion.button>
-                  ))}
+                  {cuisineOptions.map(opt => {
+                    const voteCount = getVoteCount('cuisine', opt);
+                    return (
+                      <motion.button
+                        key={opt}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          setCuisine(opt);
+                          updateVote('cuisine', opt);
+                          addActivity(`prefers ${opt} cuisine`);
+                        }}
+                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
+                          cuisine === opt
+                            ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
+                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                        }`}
+                        style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                      >
+                        {opt}
+                        {voteCount > 0 && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
+                          >
+                            {voteCount}
+                          </motion.div>
+                        )}
+                      </motion.button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -312,25 +494,38 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
             {!locked && (
               <div className="w-full -mr-3">
                 <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  {vibeOptions.map(opt => (
-                    <motion.button
-                      key={opt}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => {
-                        setVibe(opt);
-                        addActivity(`wants ${opt} vibe`);
-                      }}
-                      className={`flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
-                        vibe === opt 
-                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30' 
-                          : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                      }`}
-                      style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
-                    >
-                      {opt}
-                    </motion.button>
-                  ))}
+                  {vibeOptions.map(opt => {
+                    const voteCount = getVoteCount('vibe', opt);
+                    return (
+                      <motion.button
+                        key={opt}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          setVibe(opt);
+                          updateVote('vibe', opt);
+                          addActivity(`wants ${opt} vibe`);
+                        }}
+                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
+                          vibe === opt
+                            ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
+                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                        }`}
+                        style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                      >
+                        {opt}
+                        {voteCount > 0 && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
+                          >
+                            {voteCount}
+                          </motion.div>
+                        )}
+                      </motion.button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -340,25 +535,38 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
           <CompactPreference label="DISTANCE" icon={<MapPin className="h-4 w-4" />} value={distance} locked={locked}>
             {!locked && (
               <div className="flex gap-1.5">
-                {distanceOptions.map(opt => (
-                  <motion.button
-                    key={opt}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => {
-                      setDistance(opt);
-                      addActivity(`set distance to ${opt}`);
-                    }}
-                    className={`flex-1 rounded-lg px-2 py-2 text-xs transition-all ${
-                      distance === opt 
-                        ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30' 
-                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                    }`}
-                    style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
-                  >
-                    {opt}
-                  </motion.button>
-                ))}
+                {distanceOptions.map(opt => {
+                  const voteCount = getVoteCount('distance', opt);
+                  return (
+                    <motion.button
+                      key={opt}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => {
+                        setDistance(opt);
+                        updateVote('distance', opt);
+                        addActivity(`set distance to ${opt}`);
+                      }}
+                      className={`relative flex-1 rounded-lg px-2 py-2 text-xs transition-all ${
+                        distance === opt
+                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
+                          : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                      }`}
+                      style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                    >
+                      {opt}
+                      {voteCount > 0 && (
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
+                        >
+                          {voteCount}
+                        </motion.div>
+                      )}
+                    </motion.button>
+                  );
+                })}
               </div>
             )}
           </CompactPreference>
@@ -368,53 +576,39 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
             {!locked && (
               <div className="w-full -mr-3">
                 <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  {dietaryOptions.map(opt => (
-                    <motion.button
-                      key={opt}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => {
-                        setDietary(opt);
-                        addActivity(`set dietary to ${opt}`);
-                      }}
-                      className={`flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
-                        dietary === opt 
-                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30' 
-                          : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                      }`}
-                      style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
-                    >
-                      {opt}
-                    </motion.button>
-                  ))}
+                  {dietaryOptions.map(opt => {
+                    const voteCount = getVoteCount('dietary', opt);
+                    return (
+                      <motion.button
+                        key={opt}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          setDietary(opt);
+                          updateVote('dietary', opt);
+                          addActivity(`set dietary to ${opt}`);
+                        }}
+                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
+                          dietary === opt
+                            ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
+                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                        }`}
+                        style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                      >
+                        {opt}
+                        {voteCount > 0 && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
+                          >
+                            {voteCount}
+                          </motion.div>
+                        )}
+                      </motion.button>
+                    );
+                  })}
                 </div>
-              </div>
-            )}
-          </CompactPreference>
-
-          {/* Party Size */}
-          <CompactPreference label="PARTY SIZE" icon="👥" value={`${partySize} ${partySize === 1 ? 'person' : 'people'}`} locked={locked}>
-            {!locked && (
-              <div className="flex gap-1.5">
-                {[1, 2, 3, 4, 5, 6, 8].map(size => (
-                  <motion.button
-                    key={size}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => {
-                      setPartySize(size);
-                      addActivity(`set party size to ${size}`);
-                    }}
-                    className={`flex-1 rounded-lg px-2 py-2 text-xs transition-all ${
-                      partySize === size
-                        ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
-                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                    }`}
-                    style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
-                  >
-                    {size}
-                  </motion.button>
-                ))}
               </div>
             )}
           </CompactPreference>
@@ -533,6 +727,10 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
           distance,
           dietary
         }}
+        activities={activities}
+        onlineUsers={onlineUsers}
+        userVotes={userVotes}
+        sessionCode={sessionCode}
         minimized={chatMinimized}
         onToggleMinimized={() => setChatMinimized(!chatMinimized)}
         onPreferencesDetected={(prefs) => {
@@ -572,7 +770,7 @@ function CompactPreference({ label, icon, value, locked, children }: {
       className="glassmorphism-premium rounded-xl p-3 backdrop-blur-xl transition-all relative overflow-visible"
       style={{ zIndex: children ? 30 : 10 }}
     >
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           {typeof icon === 'string' ? <span className="text-sm">{icon}</span> : icon}
           <span className="text-xs tracking-wider text-gray-400">{label}</span>
@@ -583,26 +781,7 @@ function CompactPreference({ label, icon, value, locked, children }: {
           </motion.div>
         )}
       </div>
-      <div className="flex items-center gap-2">
-        <motion.div
-          key={value}
-          initial={{ y: -8, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className={`flex-1 rounded-lg p-2 text-center transition-all ${
-            locked 
-              ? 'bg-gradient-to-r from-[#F97316]/20 to-orange-600/20 shadow-[0_0_20px_rgba(249,115,22,0.15)]' 
-              : 'bg-white/5'
-          }`}
-        >
-          <span
-            className={`text-lg ${locked ? 'text-[#F97316]' : value ? 'text-white' : 'text-gray-500'}`}
-            style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: value ? 800 : 400 }}
-          >
-            {value || '—'}
-          </span>
-        </motion.div>
-        {children}
-      </div>
+      {children}
     </motion.div>
   );
 }

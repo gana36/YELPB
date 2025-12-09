@@ -11,6 +11,28 @@ interface Message {
   hasImage?: boolean;
 }
 
+interface Activity {
+  id: number;
+  type: 'join' | 'preference' | 'ready' | 'like';
+  user: string;
+  userColor: string;
+  message: string;
+  timestamp: Date;
+}
+
+interface SessionUser {
+  id: string;
+  name: string;
+  color: string;
+  joinedAt: number;
+}
+
+interface UserVote {
+  userId: string;
+  userName: string;
+  timestamp: number;
+}
+
 interface MultimodalChatProps {
   preferences?: {
     cuisine?: string;
@@ -19,6 +41,16 @@ interface MultimodalChatProps {
     distance?: string;
     dietary?: string;
   };
+  activities?: Activity[];
+  onlineUsers?: SessionUser[];
+  userVotes?: {
+    budget: Record<string, UserVote[]>;
+    cuisine: Record<string, UserVote[]>;
+    vibe: Record<string, UserVote[]>;
+    dietary: Record<string, UserVote[]>;
+    distance: Record<string, UserVote[]>;
+  };
+  sessionCode?: string;
   minimized?: boolean;
   onToggleMinimized?: () => void;
   onPreferencesDetected?: (prefs: {
@@ -29,12 +61,28 @@ interface MultimodalChatProps {
   }) => void;
 }
 
-export function MultimodalChat({ preferences, minimized = false, onToggleMinimized, onPreferencesDetected }: MultimodalChatProps) {
+export function MultimodalChat({
+  preferences,
+  activities = [],
+  onlineUsers = [],
+  userVotes,
+  sessionCode,
+  minimized = false,
+  onToggleMinimized,
+  onPreferencesDetected
+}: MultimodalChatProps) {
+  const getWelcomeMessage = () => {
+    if (onlineUsers.length > 1) {
+      return `Welcome to the session! I can see ${onlineUsers.length} people online. Tell me what you're craving and I'll help coordinate everyone's preferences! 🍽️`;
+    }
+    return 'Hey! Tell me what you\'re craving and I\'ll help set your preferences! 🍽️';
+  };
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
       sender: 'ai',
-      text: 'Hey! Tell me what you\'re craving and I\'ll help set your preferences! 🍽️'
+      text: getWelcomeMessage()
     },
   ]);
   const [message, setMessage] = useState('');
@@ -48,9 +96,84 @@ export function MultimodalChat({ preferences, minimized = false, onToggleMinimiz
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  // Build session context from activities and votes
+  const buildSessionContext = (): string => {
+    let context = '';
+
+    // Add user info
+    if (onlineUsers.length > 0) {
+      context += `Session: ${sessionCode || 'Unknown'}\n`;
+      context += `Users online (${onlineUsers.length}): ${onlineUsers.map(u => u.name).join(', ')}\n\n`;
+    }
+
+    // Add recent activity (last 5)
+    if (activities.length > 0) {
+      context += 'Recent activity:\n';
+      const recentActivities = activities.slice(-5);
+      recentActivities.forEach(act => {
+        context += `- ${act.user} ${act.message}\n`;
+      });
+      context += '\n';
+    }
+
+    // Add voting consensus/disagreement
+    if (userVotes) {
+      const getTopVote = (category: keyof typeof userVotes) => {
+        const votes = userVotes[category];
+        if (!votes || Object.keys(votes).length === 0) return null;
+
+        const sorted = Object.entries(votes).sort((a, b) => b[1].length - a[1].length);
+        return { option: sorted[0][0], count: sorted[0][1].length, voters: sorted[0][1].map(v => v.userName) };
+      };
+
+      const budgetVote = getTopVote('budget');
+      const cuisineVote = getTopVote('cuisine');
+      const vibeVote = getTopVote('vibe');
+
+      if (budgetVote || cuisineVote || vibeVote) {
+        context += 'Current voting:\n';
+        if (budgetVote) {
+          context += `- Budget: ${budgetVote.option} (${budgetVote.count} vote${budgetVote.count > 1 ? 's' : ''} from ${budgetVote.voters.join(', ')})\n`;
+        }
+        if (cuisineVote) {
+          context += `- Cuisine: ${cuisineVote.option} (${cuisineVote.count} vote${cuisineVote.count > 1 ? 's' : ''} from ${cuisineVote.voters.join(', ')})\n`;
+        }
+        if (vibeVote) {
+          context += `- Vibe: ${vibeVote.option} (${vibeVote.count} vote${vibeVote.count > 1 ? 's' : ''} from ${vibeVote.voters.join(', ')})\n`;
+        }
+        context += '\n';
+      }
+    }
+
+    return context;
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // React to activity feed changes - proactive AI messages
+  useEffect(() => {
+    if (activities.length === 0) return;
+
+    const latestActivity = activities[activities.length - 1];
+    const activityAge = Date.now() - latestActivity.timestamp.getTime();
+
+    // Only react to recent activities (within last 2 seconds) to avoid flooding
+    if (activityAge > 2000) return;
+
+    // Don't react if chat is minimized
+    if (minimized) return;
+
+    // React to specific events
+    if (latestActivity.type === 'join' && latestActivity.user !== 'You') {
+      setMessages(prev => [...prev, {
+        id: Date.now(),
+        sender: 'ai',
+        text: `${latestActivity.user} just joined! Welcome to the group 👋`
+      }]);
+    }
+  }, [activities, minimized]);
 
   // Convert file to base64
   const fileToBase64 = (file: File): Promise<string> => {
@@ -384,45 +507,12 @@ export function MultimodalChat({ preferences, minimized = false, onToggleMinimiz
     }
 
     if (hasIntent) {
-      // User has clear intent but AI didn't map it to standard preferences
-      const responses: Record<string, string[]> = {
-        spicy: [
-          "🌶️ Love spicy! What cuisine? Mexican, Thai, Indian, or Korean?",
-          "🔥 Spicy food coming up! Which type? Thai, Indian, Mexican, or Sichuan?",
-          "🌶️ Got it - heat seeker! What cuisine: Thai curries, Indian vindaloo, or Mexican salsa?"
-        ],
-        flavor: [
-          "Got your flavor vibe! What cuisine matches that? Italian, Japanese, French?",
-          "Nice! What type of restaurant? Italian, Asian, Mediterranean?"
-        ],
-        craving: [
-          "I hear you! What cuisine are you craving? Italian, Mexican, Asian, or something else?",
-          "What kind of food? Pizza, tacos, sushi, or something else?"
-        ],
-        quality: [
-          "Want the best! What cuisine? Italian, Japanese, steakhouse, or French?",
-          "Top spots - got it! What type: fine dining, casual, or trendy?"
-        ],
-        speed: [
-          "Quick bite! What are you feeling? Burgers, tacos, pizza, or Asian?",
-          "Nearby spots! What cuisine: casual American, Mexican, or Asian?"
-        ]
-      };
-
-      const options = responses[intentType] || responses.craving;
-      return options[Math.floor(Math.random() * options.length)];
+      // User has clear intent - acknowledge and gently guide
+      return `Got it! To help you better, could you tell me the cuisine type or price range you prefer?`;
     }
 
-    // No preferences detected and no clear intent - provide helpful guidance
-    const hints = [
-      'Try: "Thai food with spicy curry"',
-      'Try: "Italian pasta under $20"',
-      'Try: "Mexican tacos nearby"',
-      'Try: "Cozy ramen place"',
-    ];
-    const randomHint = hints[Math.floor(Math.random() * hints.length)];
-
-    return `Could you be more specific? ${randomHint} 💡`;
+    // No preferences detected and no clear intent
+    return `I can help you find the perfect spot! Tell me about the cuisine, price, or vibe you're looking for.`;
   };
 
   // Send text message
@@ -446,20 +536,12 @@ export function MultimodalChat({ preferences, minimized = false, onToggleMinimiz
       if (isCasualMessage(userMessage)) {
         setIsTyping(false);
 
-        // Smart greeting responses based on current preferences
+        // Simple, consistent greeting
         const hasPrefs = preferences && (preferences.cuisine || preferences.budget || preferences.vibe);
 
-        let casualResponse;
-        if (hasPrefs) {
-          casualResponse = "Hi! I see you already have some preferences set. Want to adjust them or add more details?";
-        } else {
-          const casualResponses = [
-            "Hey! What kind of food are you in the mood for? 🍽️",
-            "Hi! Tell me your cravings - cuisine, price, vibe - I'll handle the rest! 💭",
-            "Hello! Describe your perfect meal and I'll find the spot! 🎯",
-          ];
-          casualResponse = casualResponses[Math.floor(Math.random() * casualResponses.length)];
-        }
+        const casualResponse = hasPrefs
+          ? "Hi! Want to adjust your preferences or add more details?"
+          : "Hey! What are you in the mood for?";
 
         setMessages(prev => [...prev, {
           id: Date.now() + 1,
@@ -469,10 +551,16 @@ export function MultimodalChat({ preferences, minimized = false, onToggleMinimiz
         return;
       }
 
-      // Analyze preferences ONLY (no Yelp search)
-      console.log('Analyzing preferences:', userMessage);
+      // Build context from session activity
+      const sessionContext = buildSessionContext();
+      const contextualMessage = sessionContext
+        ? `${sessionContext}User message: ${userMessage}`
+        : userMessage;
 
-      const result = await apiService.analyzePreferences(userMessage);
+      // Analyze preferences ONLY (no Yelp search)
+      console.log('Analyzing preferences with context:', contextualMessage);
+
+      const result = await apiService.analyzePreferences(contextualMessage);
 
       setIsTyping(false);
 
@@ -728,43 +816,15 @@ export function MultimodalChat({ preferences, minimized = false, onToggleMinimiz
               className="border-t border-white/5 bg-black/40 p-3"
             >
               <div className="flex gap-2">
+                {/* Hidden file input */}
                 <input
                   type="file"
                   ref={fileInputRef}
                   onChange={handleImageSelect}
                   accept="image/*"
                   className="hidden"
+                  style={{ display: 'none' }}
                 />
-
-                {/* Image Upload Button */}
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="rounded-lg bg-zinc-900/80 p-2 transition-all hover:bg-zinc-800"
-                >
-                  <ImageIcon className="h-4 w-4 text-gray-400" />
-                </motion.button>
-
-                {/* Voice Recording Button */}
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={isRecording ? stopRecording : startRecording}
-                  className={`rounded-lg p-2 transition-all ${
-                    isRecording
-                      ? 'bg-red-500 animate-pulse'
-                      : 'bg-zinc-900/80 hover:bg-zinc-800'
-                  }`}
-                >
-                  {isRecording ? (
-                    <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 1, repeat: Infinity }}>
-                      <Mic className="h-4 w-4 text-white" />
-                    </motion.div>
-                  ) : (
-                    <Mic className="h-4 w-4 text-gray-400" />
-                  )}
-                </motion.button>
 
                 {/* Text Input */}
                 <input
@@ -783,6 +843,38 @@ export function MultimodalChat({ preferences, minimized = false, onToggleMinimiz
                   className="flex-1 rounded-lg bg-zinc-900/80 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none transition-all focus:bg-zinc-900 focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
                 />
 
+                {/* Image Upload Button */}
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-lg bg-zinc-900/80 p-2 transition-all hover:bg-zinc-800"
+                  title="Upload image"
+                >
+                  <ImageIcon className="h-4 w-4 text-gray-400" />
+                </motion.button>
+
+                {/* Voice Recording Button */}
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className={`rounded-lg p-2 transition-all ${
+                    isRecording
+                      ? 'bg-red-500 animate-pulse'
+                      : 'bg-zinc-900/80 hover:bg-zinc-800'
+                  }`}
+                  title={isRecording ? "Stop recording" : "Voice input"}
+                >
+                  {isRecording ? (
+                    <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 1, repeat: Infinity }}>
+                      <Mic className="h-4 w-4 text-white" />
+                    </motion.div>
+                  ) : (
+                    <Mic className="h-4 w-4 text-gray-400" />
+                  )}
+                </motion.button>
+
                 {/* Send Button */}
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -790,6 +882,7 @@ export function MultimodalChat({ preferences, minimized = false, onToggleMinimiz
                   onClick={handleSendMessage}
                   disabled={(!message.trim() && !selectedImage) || isRecording}
                   className="rounded-lg bg-gradient-to-r from-[#F97316] to-[#fb923c] p-2 shadow-lg shadow-orange-500/30 transition-all disabled:opacity-40"
+                  title="Send message"
                 >
                   <Send className="h-4 w-4 text-white" />
                 </motion.button>
