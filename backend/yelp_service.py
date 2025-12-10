@@ -206,6 +206,14 @@ class YelpAIService:
                     # Convert meters to miles
                     distance = f"{(dist_meters * 0.000621371):.1f} mi"
 
+            # Extract menu URL from attributes (Yelp uses PascalCase "MenuUrl")
+            menu_url = None
+            attributes = entity_data.get("attributes", {})
+            if isinstance(attributes, dict):
+                menu_url = attributes.get("MenuUrl")
+            if not menu_url:
+                menu_url = entity_data.get("menu_url")
+
             business = Business(
                 id=entity_data.get("id", entity_data.get("alias", str(hash(entity_data.get("name"))))),
                 name=entity_data.get("name", ""),
@@ -220,6 +228,7 @@ class YelpAIService:
                 coordinates=coordinates,
                 phone=entity_data.get("phone"),
                 url=entity_data.get("url"),
+                menu_url=menu_url,
                 categories=entity_data.get("categories")
             )
             return [business]
@@ -291,6 +300,190 @@ class YelpAIService:
 
         logger.info(f"Booking request: {query}")
         return response
+
+    async def business_search(
+        self,
+        latitude: float,
+        longitude: float,
+        term: str = "restaurants",
+        radius: Optional[int] = None,
+        categories: Optional[List[str]] = None,
+        price: Optional[List[int]] = None,
+        open_now: bool = False,
+        attributes: Optional[List[str]] = None,
+        sort_by: str = "best_match",
+        limit: int = 50,
+        offset: int = 0,
+        locale: str = "en_US"
+    ) -> List[Business]:
+        """
+        Search for businesses using Yelp Business Search API v3
+        Returns up to 50 businesses per request (240 max with pagination)
+        
+        Args:
+            latitude: User's latitude
+            longitude: User's longitude
+            term: Search term (e.g., "restaurants", "Italian")
+            radius: Search radius in meters (max 40000)
+            categories: List of category aliases (e.g., ["italian", "pizza"])
+            price: Price levels [1, 2, 3, 4] for $, $$, $$$, $$$$
+            open_now: Only return currently open businesses
+            attributes: List of attribute filters (e.g., ["hot_and_new", "outdoor_seating"])
+            sort_by: Sort mode: "best_match", "rating", "review_count", "distance"
+            limit: Number of results (max 50)
+            offset: Offset for pagination (max 1000)
+            locale: Locale code
+            
+        Returns:
+            List of Business objects
+        """
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "application/json"
+        }
+        
+        # Build query params
+        params: Dict[str, Any] = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "term": term,
+            "sort_by": sort_by,
+            "limit": min(limit, 50),  # Max 50 per request
+            "offset": min(offset, 1000),
+            "locale": locale
+        }
+        
+        if radius:
+            params["radius"] = min(radius, 40000)  # Max 40km
+            
+        if categories:
+            params["categories"] = ",".join(categories)
+            
+        if price:
+            params["price"] = ",".join(str(p) for p in price)
+            
+        if open_now:
+            params["open_now"] = True
+            
+        if attributes:
+            params["attributes"] = ",".join(attributes)
+        
+        endpoint = f"{self.base_url}/v3/businesses/search"
+        
+        logger.info(f"Business Search API request: {params}")
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    endpoint,
+                    params=params,
+                    headers=headers
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                businesses_data = data.get("businesses", [])
+                total = data.get("total", 0)
+                
+                logger.info(f"Business Search returned {len(businesses_data)} of {total} total businesses")
+                
+                businesses = []
+                for biz in businesses_data:
+                    try:
+                        # Calculate distance
+                        distance = None
+                        if "distance" in biz:
+                            dist_meters = biz["distance"]
+                            distance = f"{(dist_meters * 0.000621371):.1f} mi"
+                        
+                        # Extract tags from categories
+                        tags = []
+                        if biz.get("categories"):
+                            tags = [cat.get("title", "") for cat in biz["categories"] if cat.get("title")]
+                        
+                        business = Business(
+                            id=biz.get("id", ""),
+                            name=biz.get("name", ""),
+                            rating=biz.get("rating"),
+                            review_count=biz.get("review_count", 0),
+                            price=biz.get("price"),
+                            distance=distance,
+                            image_url=biz.get("image_url"),
+                            tags=tags,
+                            votes=0,
+                            location=biz.get("location"),
+                            coordinates=biz.get("coordinates"),
+                            phone=biz.get("phone"),
+                            url=biz.get("url"),
+                            menu_url=biz.get("attributes", {}).get("menu_url"),
+                            categories=biz.get("categories")
+                        )
+                        businesses.append(business)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse business: {e}")
+                        
+                return businesses
+                
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Business Search API error: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Yelp API error: {e.response.status_code}")
+        except Exception as e:
+            logger.error(f"Business Search error: {e}")
+            raise
+
+    async def combined_search(
+        self,
+        latitude: float,
+        longitude: float,
+        query: str = "best restaurants",
+        term: str = "restaurants",
+        radius: Optional[int] = None,
+        categories: Optional[List[str]] = None,
+        price: Optional[List[int]] = None,
+        limit: int = 10
+    ) -> List[Business]:
+        """
+        Combined search: AI Chat API (rich data with MenuUrl) + Business Search API (quantity).
+        Deduplicates results, prioritizing AI Chat results.
+        """
+        all_businesses: Dict[str, Business] = {}
+        
+        # 1. Get curated results from AI Chat API (has MenuUrl, summaries)
+        try:
+            chat_response = await self.chat(
+                query=query,
+                latitude=latitude,
+                longitude=longitude
+            )
+            for biz in chat_response.businesses:
+                all_businesses[biz.id] = biz
+            logger.info(f"AI Chat returned {len(chat_response.businesses)} businesses with rich data")
+        except Exception as e:
+            logger.warning(f"AI Chat failed, continuing with Search API: {e}")
+        
+        # 2. Get more results from Business Search API
+        try:
+            search_results = await self.business_search(
+                latitude=latitude,
+                longitude=longitude,
+                term=term,
+                radius=radius,
+                categories=categories,
+                price=price,
+                limit=limit
+            )
+            added = 0
+            for biz in search_results:
+                if biz.id not in all_businesses:
+                    all_businesses[biz.id] = biz
+                    added += 1
+            logger.info(f"Business Search added {added} new businesses")
+        except Exception as e:
+            logger.warning(f"Business Search failed: {e}")
+        
+        result = list(all_businesses.values())
+        logger.info(f"Combined search total: {len(result)} unique businesses")
+        return result
 
 
 # Create a singleton instance

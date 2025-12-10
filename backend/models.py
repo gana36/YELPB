@@ -37,6 +37,7 @@ class Business(BaseModel):
     coordinates: Optional[Coordinates] = None
     phone: Optional[str] = None
     url: Optional[str] = None
+    menuUrl: Optional[str] = Field(default=None, alias="menu_url", description="Restaurant menu URL")
     categories: Optional[List[Dict[str, str]]] = None
 
     class Config:
