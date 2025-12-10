@@ -482,7 +482,7 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
         </motion.div>
       )}
 
-      {/* Next card preview (behind) */}
+      {/* Next card preview - hidden to avoid showing card before swipe
       {currentIndex < restaurants.length - 1 && (
         <div className="absolute inset-0 flex items-center justify-center">
           <motion.div
@@ -497,6 +497,7 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
           />
         </div>
       )}
+      */}
 
       {/* Current Card */}
       <AnimatePresence mode="wait">
@@ -741,7 +742,7 @@ function SwipeCard({ restaurant, onSwipe, direction, showInfo, isFlipped, onFlip
                           href={restaurant.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-2 rounded-xl bg-[#F97316] px-4 py-2 text-sm font-semibold text-white"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#F97316] px-4 py-2 text-sm font-semibold text-white"
                           onClick={(e) => e.stopPropagation()}
                         >
                           View on Yelp

@@ -20,14 +20,16 @@ export default function App() {
     partySize: 2
   });
   const [winnerRestaurant, setWinnerRestaurant] = useState<any>(null);
+  const [isOwner, setIsOwner] = useState(false);
 
   const handleStartSession = (code: string) => {
     setSessionCode(code);
     setCurrentScreen('lobby');
   };
 
-  const handleStartSwiping = (prefs: typeof preferences) => {
+  const handleStartSwiping = (prefs: typeof preferences & { isOwner?: boolean }) => {
     setPreferences(prefs);
+    setIsOwner(prefs.isOwner ?? false);
     setCurrentScreen('swipe');
   };
 
@@ -64,6 +66,7 @@ export default function App() {
                 bookingTime: preferences.bookingTime,
                 partySize: preferences.partySize
               }}
+              isOwner={isOwner}
               onNavigate={() => setCurrentScreen('welcome')}
             />
           </PageTransition>

@@ -16,6 +16,7 @@ interface LobbyScreenProps {
     bookingDate: string;
     bookingTime: string;
     partySize: number;
+    isOwner: boolean;
   }) => void;
 }
 
@@ -61,6 +62,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
   const [onlineUsers, setOnlineUsers] = useState<SessionUser[]>([]);
   const [currentUserId] = useState(() => `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
   const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false); // Track if current user is session owner
 
   // Multi-user voting state from Firebase
   const [userVotes, setUserVotes] = useState<{
@@ -158,6 +160,11 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
       }
       if (data.locked !== undefined) {
         setLocked(data.locked);
+      }
+      // Check if current user is the session owner
+      if ((data as any).ownerId) {
+        setIsOwner((data as any).ownerId === currentUserId);
+        console.log('👑 Owner check:', { ownerId: (data as any).ownerId, currentUserId, isOwner: (data as any).ownerId === currentUserId });
       }
       // Also get users from main document (backup method)
       if (data.users) {
@@ -850,7 +857,8 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                     distance: merged.distance,
                     bookingDate,
                     bookingTime,
-                    partySize
+                    partySize,
+                    isOwner
                   });
                 }}
                 className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#F97316] via-orange-500 to-[#fb923c] py-3 shadow-xl shadow-orange-500/40"

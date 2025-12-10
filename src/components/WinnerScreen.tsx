@@ -11,9 +11,10 @@ interface WinnerScreenProps {
     bookingTime: string;
     partySize: number;
   };
+  isOwner?: boolean;
 }
 
-export function WinnerScreen({ onNavigate, restaurant, preferences }: WinnerScreenProps) {
+export function WinnerScreen({ onNavigate, restaurant, preferences, isOwner = false }: WinnerScreenProps) {
   const [showConfetti, setShowConfetti] = useState(true);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingDate, setBookingDate] = useState(preferences?.bookingDate || '');
@@ -33,6 +34,56 @@ export function WinnerScreen({ onNavigate, restaurant, preferences }: WinnerScre
     }
     return () => clearTimeout(timer);
   }, [bookingDate]);
+
+  // Handle Get Directions - opens Google Maps with restaurant address
+  const handleGetDirections = () => {
+    const address = restaurant?.address || restaurant?.location?.address1 || '';
+    const city = restaurant?.city || restaurant?.location?.city || '';
+    const fullAddress = `${address}, ${city}`.trim();
+
+    if (fullAddress && fullAddress !== ', ') {
+      // Encode address for URL
+      const encodedAddress = encodeURIComponent(fullAddress);
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`, '_blank');
+    } else if (restaurant?.coordinates) {
+      // Use coordinates if no address
+      const { latitude, longitude } = restaurant.coordinates;
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`, '_blank');
+    } else {
+      // Fallback: search by restaurant name
+      const searchQuery = encodeURIComponent(restaurantName);
+      window.open(`https://www.google.com/maps/search/?api=1&query=${searchQuery}`, '_blank');
+    }
+  };
+
+  // Handle Add to Calendar - opens Google Calendar directly
+  const handleAddToCalendar = () => {
+    const eventDate = new Date(bookingDate + 'T' + bookingTime);
+    const endDate = new Date(eventDate.getTime() + 2 * 60 * 60 * 1000); // 2 hours later
+
+    // Format dates for Google Calendar URL (YYYYMMDDTHHMMSS)
+    const formatGoogleDate = (date: Date) => {
+      return date.toISOString().replace(/-|:|\.\d\d\d/g, '').slice(0, -1);
+    };
+
+    const address = restaurant?.address || restaurant?.location?.address1 || '';
+    const city = restaurant?.city || restaurant?.location?.city || '';
+    const fullAddress = `${address}, ${city}`.trim();
+
+    const eventTitle = `Dinner at ${restaurantName}`;
+    const eventDetails = `Dinner reservation at ${restaurantName}. Party size: ${partySize}. ${restaurant?.phone ? 'Phone: ' + restaurant.phone : ''}`;
+
+    // Build Google Calendar URL
+    const googleCalendarUrl = new URL('https://calendar.google.com/calendar/render');
+    googleCalendarUrl.searchParams.set('action', 'TEMPLATE');
+    googleCalendarUrl.searchParams.set('text', eventTitle);
+    googleCalendarUrl.searchParams.set('dates', `${formatGoogleDate(eventDate)}/${formatGoogleDate(endDate)}`);
+    googleCalendarUrl.searchParams.set('details', eventDetails);
+    googleCalendarUrl.searchParams.set('location', fullAddress || restaurantName);
+
+    // Open Google Calendar in new tab
+    window.open(googleCalendarUrl.toString(), '_blank');
+  };
 
   const handleBookReservation = async () => {
     if (!restaurant || !bookingDate || !bookingTime) {
@@ -115,7 +166,7 @@ export function WinnerScreen({ onNavigate, restaurant, preferences }: WinnerScre
           }}
         >
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black" />
-          
+
           {/* Trophy icon */}
           <motion.div
             initial={{ scale: 0, rotate: -180 }}
@@ -139,7 +190,7 @@ export function WinnerScreen({ onNavigate, restaurant, preferences }: WinnerScre
               </motion.div>
             </div>
           </motion.div>
-          
+
           {/* Overlaid text */}
           <div className="absolute inset-x-0 bottom-0 p-8 pb-6">
             <motion.div
@@ -195,22 +246,22 @@ export function WinnerScreen({ onNavigate, restaurant, preferences }: WinnerScre
           <InfoCard
             icon={<MapPin className="h-6 w-6 text-[#F97316]" />}
             label="Address"
-            value="123 Via Roma, Downtown"
+            value={`${restaurant?.address || restaurant?.location?.address1 || 'Address not available'}${restaurant?.city || restaurant?.location?.city ? ', ' + (restaurant?.city || restaurant?.location?.city) : ''}`}
             delay={0.7}
           />
 
           <InfoCard
             icon={<Clock className="h-6 w-6 text-[#F97316]" />}
-            label="Hours Today"
-            value="5:00 PM - 11:00 PM"
+            label="Reservation"
+            value={`${bookingDate} at ${bookingTime}`}
             delay={0.8}
-            badge="Open Now"
+            badge={`${partySize} ${partySize === 1 ? 'person' : 'people'}`}
           />
 
           <InfoCard
             icon={<Phone className="h-6 w-6 text-[#F97316]" />}
             label="Contact"
-            value="(555) 123-4567"
+            value={restaurant?.phone || 'Phone not available'}
             delay={0.9}
           />
 
@@ -269,6 +320,7 @@ export function WinnerScreen({ onNavigate, restaurant, preferences }: WinnerScre
           <motion.button
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.95 }}
+            onClick={handleGetDirections}
             className="flex flex-1 items-center justify-center gap-2 rounded-2xl border-2 border-white/20 bg-white/5 px-6 py-4 backdrop-blur-md transition-all hover:border-white/30 hover:bg-white/10"
           >
             <Navigation className="h-5 w-5 text-white" />
@@ -281,6 +333,7 @@ export function WinnerScreen({ onNavigate, restaurant, preferences }: WinnerScre
         <motion.button
           whileHover={{ scale: 1.02, y: -2 }}
           whileTap={{ scale: 0.98 }}
+          onClick={handleAddToCalendar}
           className="mb-3 w-full rounded-2xl border-2 border-orange-500/30 bg-orange-500/10 py-4 backdrop-blur-md transition-all hover:border-orange-500/50 hover:bg-orange-500/20"
         >
           <div className="flex items-center justify-center gap-2">
@@ -291,32 +344,35 @@ export function WinnerScreen({ onNavigate, restaurant, preferences }: WinnerScre
           </div>
         </motion.button>
 
-        <motion.button
-          whileHover={{ scale: 1.01, y: -2 }}
-          whileTap={{ scale: 0.99 }}
-          onClick={() => setShowBookingModal(true)}
-          className="relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-[#F97316] via-orange-500 to-[#fb923c] py-5 shadow-2xl"
-          animate={{
-            boxShadow: [
-              '0 20px 60px -12px rgba(249,115,22,0.5)',
-              '0 30px 80px -12px rgba(249,115,22,0.8)',
-              '0 20px 60px -12px rgba(249,115,22,0.5)',
-            ]
-          }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <motion.div
-            className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/30 to-white/0"
-            animate={{ x: ['-200%', '200%'] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-          />
-          <div className="relative flex items-center justify-center gap-3">
-            <CalendarPlus className="h-6 w-6 text-white" />
-            <span className="text-xl text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800 }}>
-              BOOK A TABLE
-            </span>
-          </div>
-        </motion.button>
+        {/* Book A Table - only visible to group owner */}
+        {isOwner && (
+          <motion.button
+            whileHover={{ scale: 1.01, y: -2 }}
+            whileTap={{ scale: 0.99 }}
+            onClick={() => setShowBookingModal(true)}
+            className="relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-[#F97316] via-orange-500 to-[#fb923c] py-5 shadow-2xl"
+            animate={{
+              boxShadow: [
+                '0 20px 60px -12px rgba(249,115,22,0.5)',
+                '0 30px 80px -12px rgba(249,115,22,0.8)',
+                '0 20px 60px -12px rgba(249,115,22,0.5)',
+              ]
+            }}
+            transition={{ duration: 2, repeat: Infinity }}
+          >
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/30 to-white/0"
+              animate={{ x: ['-200%', '200%'] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+            />
+            <div className="relative flex items-center justify-center gap-3">
+              <CalendarPlus className="h-6 w-6 text-white" />
+              <span className="text-xl text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800 }}>
+                BOOK A TABLE
+              </span>
+            </div>
+          </motion.button>
+        )}
 
         <button
           onClick={onNavigate}

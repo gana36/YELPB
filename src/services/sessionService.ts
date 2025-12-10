@@ -58,6 +58,7 @@ export interface Activity {
 
 export interface SessionData {
   code: string;
+  ownerId: string; // User ID of the session creator
   users: Record<string, SessionUser>;
   votes: SessionVotes;
   locked: boolean;
@@ -124,6 +125,7 @@ class SessionService {
         console.log('🔥 [joinSession] Session does not exist, creating new session...');
         await setDoc(sessionRef, {
           code: sessionCode,
+          ownerId: user.id, // First user to join becomes the owner
           votes: {
             budget: {},
             cuisine: {},
