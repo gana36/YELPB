@@ -136,6 +136,38 @@ class ApiService {
     }));
   }
 
+  async combinedSearch(params: {
+    query?: string;
+    latitude: number;
+    longitude: number;
+    term?: string;
+    radius?: number;
+    categories?: string[];
+    price?: number[];
+    limit?: number;
+  }): Promise<Business[]> {
+    const businesses = await this.request<Business[]>('/api/yelp/combined-search', {
+      method: 'POST',
+      body: JSON.stringify({
+        query: params.query || 'best restaurants',
+        latitude: params.latitude,
+        longitude: params.longitude,
+        term: params.term || 'restaurants',
+        radius: params.radius,
+        categories: params.categories,
+        price: params.price,
+        limit: params.limit || 10,
+      }),
+    });
+
+    // Map image_url to image for consistency
+    return businesses.map((b) => ({
+      ...b,
+      image: b.image_url || b.image,
+      tags: b.categories?.map(c => c.title) || [],
+    }));
+  }
+
   async chat(request: ChatRequest): Promise<ChatResponse> {
     return this.request<ChatResponse>('/api/yelp/chat', {
       method: 'POST',
@@ -210,6 +242,21 @@ class ApiService {
     });
   }
 
+  async geminiChat(
+    userMessage: string,
+    sessionContext: string = '',
+    currentPreferences: Record<string, string> = {}
+  ): Promise<{ success: boolean; message: string }> {
+    return this.request('/api/gemini/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_message: userMessage,
+        session_context: sessionContext,
+        current_preferences: currentPreferences,
+      }),
+    });
+  }
+
   async startCalendarAuth(userId: string): Promise<{ auth_url: string; state: string }> {
     return this.request(`/api/calendar/auth/start?user_id=${userId}`, {
       method: 'GET',
@@ -228,6 +275,28 @@ class ApiService {
         refresh_token: refreshToken,
         event_details: eventDetails,
       }),
+    });
+  }
+
+  async scrapeMenu(menuUrl: string): Promise<{
+    success: boolean;
+    menu?: {
+      categories: Array<{
+        name: string;
+        items: Array<{
+          name: string;
+          price?: string;
+          description?: string;
+        }>;
+      }>;
+      highlights?: string[];
+      price_range?: string;
+    };
+    error?: string;
+  }> {
+    return this.request('/api/menu/scrape', {
+      method: 'POST',
+      body: JSON.stringify({ menu_url: menuUrl }),
     });
   }
 

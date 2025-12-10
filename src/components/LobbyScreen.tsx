@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, Send, Sparkles, Copy, Check, Users, Zap, Bell, MapPin, Apple, ChevronDown, ChevronUp } from 'lucide-react';
+import { Lock, Send, Sparkles, Copy, Check, Users, Zap, Bell, MapPin, Apple, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
 import { MultimodalChat } from './MultimodalChat';
+import { GroupMap } from './GroupMap';
 import { sessionService, SessionUser, UserVote } from '../services/sessionService';
-
+import { useGeolocation } from '../hooks/useGeolocation';
 interface LobbyScreenProps {
   sessionCode: string;
   onNavigate: (preferences: {
@@ -75,6 +76,33 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
     dietary: {},
     distance: {}
   });
+
+  // Get current user's location for the group map
+  const { location: userLocation, requestLocation } = useGeolocation(true);
+
+  // Convert distance string to miles number for map
+  const distanceToMiles = (dist: string): number => {
+    const match = dist.match(/(\d+\.?\d*)/);
+    return match ? parseFloat(match[1]) : 2;
+  };
+
+  // Generate user locations for map (using current user + simulated positions for demo)
+  const mapUsers = onlineUsers.map((user, index) => ({
+    id: user.id,
+    name: user.name,
+    color: user.color.includes('orange') ? '#F97316' :
+      user.color.includes('purple') ? '#a855f7' :
+        user.color.includes('blue') ? '#3b82f6' :
+          user.color.includes('green') ? '#22c55e' :
+            user.color.includes('yellow') ? '#eab308' : '#ec4899',
+    latitude: userLocation?.latitude
+      ? userLocation.latitude + (Math.random() - 0.5) * 0.02 * (index + 1)
+      : 37.7749 + (Math.random() - 0.5) * 0.02 * (index + 1),
+    longitude: userLocation?.longitude
+      ? userLocation.longitude + (Math.random() - 0.5) * 0.02 * (index + 1)
+      : -122.4194 + (Math.random() - 0.5) * 0.02 * (index + 1),
+    isCurrentUser: user.id === currentUserId
+  }));
 
   // Firebase: Join session and subscribe to updates
   useEffect(() => {
@@ -189,6 +217,75 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
     return (userVotes[category][value] || []).map(v => v.userName);
   };
 
+  // Smart preference merging for group consensus
+  const getMergedPreferences = () => {
+    const budgetRank = ['$', '$$', '$$$', '$$$$'];
+    const distanceRank = ['0.5 mi', '1 mi', '2 mi', '5 mi', '10 mi'];
+
+    // Helper: Get top voted options (handles ties)
+    const getTopVoted = (category: keyof typeof userVotes, options: string[]): string[] => {
+      const voteCounts = options.map(opt => ({
+        option: opt,
+        count: getVoteCount(category, opt)
+      })).filter(v => v.count > 0);
+
+      if (voteCounts.length === 0) return [];
+
+      const maxVotes = Math.max(...voteCounts.map(v => v.count));
+      return voteCounts.filter(v => v.count === maxVotes).map(v => v.option);
+    };
+
+    // Budget: Use LOWEST voted (no one gets priced out)
+    const budgetVotes = getTopVoted('budget', budgetOptions);
+    let mergedBudget = budget; // fallback to user's selection
+    if (budgetVotes.length > 0) {
+      // Find the lowest budget among top votes
+      mergedBudget = budgetVotes.reduce((lowest, current) =>
+        budgetRank.indexOf(current) < budgetRank.indexOf(lowest) ? current : lowest
+      );
+    }
+
+    // Cuisine: Include ALL top voted (ties included)
+    const cuisineVotes = getTopVoted('cuisine', cuisineOptions);
+    const mergedCuisine = cuisineVotes.length > 0 ? cuisineVotes.join(' ') : cuisine;
+
+    // Vibe: Include ALL top voted (ties included)
+    const vibeVotes = getTopVoted('vibe', vibeOptions);
+    const mergedVibe = vibeVotes.length > 0 ? vibeVotes.join(' ') : vibe;
+
+    // Dietary: Use MOST restrictive (if anyone needs it, include it)
+    const dietaryPriority = ['Vegan', 'Vegetarian', 'Gluten-Free', 'Halal', 'Kosher', 'None'];
+    let mergedDietary = dietary;
+    for (const diet of dietaryPriority) {
+      if (getVoteCount('dietary', diet) > 0) {
+        mergedDietary = diet;
+        break;
+      }
+    }
+
+    // Distance: Use HIGHEST voted (include all locations)
+    const distanceVotes = getTopVoted('distance', distanceOptions);
+    let mergedDistance = distance;
+    if (distanceVotes.length > 0) {
+      mergedDistance = distanceVotes.reduce((highest, current) =>
+        distanceRank.indexOf(current) > distanceRank.indexOf(highest) ? current : highest
+      );
+    }
+
+    return {
+      cuisine: mergedCuisine,
+      budget: mergedBudget,
+      vibe: mergedVibe,
+      dietary: mergedDietary,
+      distance: mergedDistance,
+      // Include info about ties for display
+      hasCuisineTie: cuisineVotes.length > 1,
+      hasVibeTie: vibeVotes.length > 1,
+      cuisineOptions: cuisineVotes,
+      vibeOptions: vibeVotes
+    };
+  };
+
   useEffect(() => {
     if (locked) {
       const newActivity: Activity = {
@@ -232,7 +329,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
         backgroundSize: 'cover'
       }} />
 
-      <motion.div 
+      <motion.div
         className="absolute left-1/2 top-20 h-96 w-96 -translate-x-1/2 rounded-full bg-orange-500/10 blur-[120px] pointer-events-none"
         animate={{
           scale: [1, 1.2, 1],
@@ -331,7 +428,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
               <span className="text-xs text-orange-400">Live</span>
             </div>
           </div>
-          
+
           <div className="max-h-24 overflow-y-auto p-2 space-y-1.5">
             <AnimatePresence mode="popLayout">
               {activities.slice(-3).reverse().map((activity) => (
@@ -401,6 +498,16 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
       {/* Scrollable Preferences Section */}
       <div className="relative z-10 flex-1 overflow-y-auto px-4 py-3">
         <div className="space-y-2.5 pb-4">
+          {/* Group Location Map */}
+          <GroupMap
+            users={mapUsers}
+            currentUserLocation={userLocation ? {
+              latitude: userLocation.latitude,
+              longitude: userLocation.longitude
+            } : undefined}
+            distanceRadius={distanceToMiles(distance)}
+          />
+
           {/* Budget */}
           <CompactPreference
             label="BUDGET"
@@ -423,24 +530,23 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                         updateVote('budget', opt);
                         addActivity(`voted for ${opt} budget`);
                       }}
-                      className={`relative flex-1 rounded-lg px-2.5 py-2 text-sm transition-all ${
-                        budget === opt
-                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
+                      className={`relative flex-1 rounded-lg px-2.5 py-2 text-sm transition-all ${budget === opt
+                        ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
                         : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                    }`}
-                    style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
-                  >
-                    {opt}
-                    {voteCount > 0 && (
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
-                      >
-                        {voteCount}
-                      </motion.div>
-                    )}
-                  </motion.button>
+                        }`}
+                      style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                    >
+                      {opt}
+                      {voteCount > 0 && (
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
+                        >
+                          {voteCount}
+                        </motion.div>
+                      )}
+                    </motion.button>
                   );
                 })}
               </div>
@@ -464,11 +570,10 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                           updateVote('cuisine', opt);
                           addActivity(`prefers ${opt} cuisine`);
                         }}
-                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
-                          cuisine === opt
-                            ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
-                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                        }`}
+                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${cuisine === opt
+                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
+                          : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                          }`}
                         style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
                       >
                         {opt}
@@ -506,11 +611,10 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                           updateVote('vibe', opt);
                           addActivity(`wants ${opt} vibe`);
                         }}
-                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
-                          vibe === opt
-                            ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
-                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                        }`}
+                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${vibe === opt
+                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
+                          : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                          }`}
                         style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
                       >
                         {opt}
@@ -547,11 +651,10 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                         updateVote('distance', opt);
                         addActivity(`set distance to ${opt}`);
                       }}
-                      className={`relative flex-1 rounded-lg px-2 py-2 text-xs transition-all ${
-                        distance === opt
-                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
-                          : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                      }`}
+                      className={`relative flex-1 rounded-lg px-2 py-2 text-xs transition-all ${distance === opt
+                        ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
+                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                        }`}
                       style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
                     >
                       {opt}
@@ -588,11 +691,10 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                           updateVote('dietary', opt);
                           addActivity(`set dietary to ${opt}`);
                         }}
-                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
-                          dietary === opt
-                            ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
-                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                        }`}
+                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${dietary === opt
+                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
+                          : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                          }`}
                         style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
                       >
                         {opt}
@@ -680,7 +782,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
               onClick={() => setLocked(true)}
               className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#F97316] to-[#fb923c] py-3 shadow-xl shadow-orange-500/30"
             >
-              <motion.div 
+              <motion.div
                 className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0"
                 animate={{ x: ['-200%', '200%'] }}
                 transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
@@ -693,27 +795,82 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
               </div>
             </motion.button>
           ) : (
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => onNavigate({ cuisine, budget, vibe, dietary, distance, bookingDate, bookingTime, partySize })}
-              className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#F97316] via-orange-500 to-[#fb923c] py-3 shadow-xl shadow-orange-500/40"
-              animate={{
-                boxShadow: [
-                  '0 20px 40px -12px rgba(249,115,22,0.4)',
-                  '0 20px 60px -12px rgba(249,115,22,0.6)',
-                  '0 20px 40px -12px rgba(249,115,22,0.4)',
-                ]
-              }}
-              transition={{ duration: 2, repeat: Infinity }}
-            >
-              <div className="relative flex items-center justify-center gap-2">
-                <Zap className="h-4 w-4" fill="currentColor" />
-                <span className="text-sm" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
-                  Start Swiping
-                </span>
-              </div>
-            </motion.button>
+            <>
+              {/* Merged Preferences Summary */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-3 rounded-xl border border-green-500/30 bg-green-500/10 p-3"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle className="h-4 w-4 text-green-400" />
+                  <span className="text-xs font-semibold text-green-400">SEARCHING FOR</span>
+                </div>
+                {(() => {
+                  const m = getMergedPreferences();
+                  return (
+                    <div className="flex flex-wrap gap-1.5">
+                      {m.dietary && m.dietary !== 'None' && (
+                        <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs text-red-300">
+                          🥗 {m.dietary}
+                        </span>
+                      )}
+                      {m.cuisine && (
+                        <span className="rounded-full bg-orange-500/20 px-2 py-0.5 text-xs text-orange-300">
+                          🍽️ {m.cuisine} {m.hasCuisineTie && '(tied)'}
+                        </span>
+                      )}
+                      {m.vibe && (
+                        <span className="rounded-full bg-purple-500/20 px-2 py-0.5 text-xs text-purple-300">
+                          ✨ {m.vibe} {m.hasVibeTie && '(tied)'}
+                        </span>
+                      )}
+                      <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-300">
+                        💰 {m.budget}
+                      </span>
+                      <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-300">
+                        📍 {m.distance}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </motion.div>
+
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => {
+                  const merged = getMergedPreferences();
+                  console.log('🎯 Merged preferences:', merged);
+                  onNavigate({
+                    cuisine: merged.cuisine,
+                    budget: merged.budget,
+                    vibe: merged.vibe,
+                    dietary: merged.dietary,
+                    distance: merged.distance,
+                    bookingDate,
+                    bookingTime,
+                    partySize
+                  });
+                }}
+                className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#F97316] via-orange-500 to-[#fb923c] py-3 shadow-xl shadow-orange-500/40"
+                animate={{
+                  boxShadow: [
+                    '0 20px 40px -12px rgba(249,115,22,0.4)',
+                    '0 20px 60px -12px rgba(249,115,22,0.6)',
+                    '0 20px 40px -12px rgba(249,115,22,0.4)',
+                  ]
+                }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <div className="relative flex items-center justify-center gap-2">
+                  <Zap className="h-4 w-4" fill="currentColor" />
+                  <span className="text-sm" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+                    Start Swiping
+                  </span>
+                </div>
+              </motion.button>
+            </>
           )}
         </div>
       </div>
@@ -817,11 +974,10 @@ function MiniDropdown({ options, value, onChange, open, onToggle }: {
                     onChange(opt);
                     onToggle();
                   }}
-                  className={`w-full px-3 py-2 text-left text-xs transition-colors ${
-                    value === opt
-                      ? 'bg-[#F97316] text-white'
-                      : 'text-gray-300 hover:bg-white/10'
-                  }`}
+                  className={`w-full px-3 py-2 text-left text-xs transition-colors ${value === opt
+                    ? 'bg-[#F97316] text-white'
+                    : 'text-gray-300 hover:bg-white/10'
+                    }`}
                 >
                   {opt}
                 </button>

@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -13,8 +14,10 @@ from models import (
 from yelp_service import yelp_service
 from gemini_service import gemini_service
 from calendar_service import calendar_service
+from menu_agent import scrape_menu as scrape_menu_agent
 import base64
 import json
+from pydantic import BaseModel
 
 # Configure logging
 logging.basicConfig(
@@ -178,6 +181,47 @@ async def book_reservation(request: dict):
 
     except Exception as e:
         logger.error(f"Error booking reservation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CombinedSearchRequest(BaseModel):
+    """Request for combined Yelp search (AI Chat + Business Search APIs)"""
+    query: str = "best restaurants"
+    latitude: float
+    longitude: float
+    term: str = "restaurants"
+    radius: Optional[int] = None  # in meters, max 40000
+    categories: Optional[list[str]] = None  # e.g., ["italian", "pizza"]
+    price: Optional[list[int]] = None  # [1,2,3,4] for $-$$$$
+    limit: int = 10
+
+
+@app.post("/api/yelp/combined-search", response_model=list[Business])
+async def combined_search(request: CombinedSearchRequest):
+    """
+    Combined search using both Yelp AI Chat API and Business Search API.
+    
+    AI Chat API provides curated results with rich data (MenuUrl, summaries).
+    Business Search API provides more quantity (up to 50 per request).
+    Results are deduplicated, prioritizing AI Chat results.
+    """
+    try:
+        businesses = await yelp_service.combined_search(
+            latitude=request.latitude,
+            longitude=request.longitude,
+            query=request.query,
+            term=request.term,
+            radius=request.radius,
+            categories=request.categories,
+            price=request.price,
+            limit=request.limit
+        )
+        
+        logger.info(f"Combined search: '{request.query}' - Found {len(businesses)} unique businesses")
+        return businesses
+        
+    except Exception as e:
+        logger.error(f"Error in combined search: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -384,6 +428,46 @@ async def analyze_preferences(request: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/gemini/chat")
+async def gemini_chat(request: dict):
+    """
+    Pure conversational AI chat for preference setting
+    
+    This endpoint provides natural conversation without triggering Yelp searches.
+    Used for the preference-setting assistant in the lobby.
+    
+    Args:
+        request: Dict with user_message, session_context, and current_preferences
+        
+    Returns:
+        AI response message
+    """
+    try:
+        user_message = request.get('user_message', '')
+        session_context = request.get('session_context', '')
+        current_preferences = request.get('current_preferences', {})
+        
+        if not user_message:
+            return {
+                "success": False,
+                "error": "No user_message provided"
+            }
+        
+        # Get conversational response from Gemini
+        result = await gemini_service.chat(
+            user_message=user_message,
+            session_context=session_context,
+            current_preferences=current_preferences
+        )
+        
+        logger.info(f"Gemini chat: {user_message[:50]}...")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in Gemini chat: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Google Calendar Integration Endpoints
 
 # In-memory store for OAuth state (use Redis/DB in production)
@@ -501,6 +585,32 @@ async def create_calendar_event(request: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Menu scrape request model
+class MenuScrapeRequest(BaseModel):
+    menu_url: str
+
+
+@app.post("/api/menu/scrape")
+async def scrape_menu(request: MenuScrapeRequest):
+    """
+    Scrape a restaurant menu from the given URL using CrewAI agent
+    
+    Args:
+        request: MenuScrapeRequest with menu_url
+        
+    Returns:
+        Structured menu data with categories, items, and prices
+    """
+    try:
+        logger.info(f"Scraping menu from: {request.menu_url}")
+        result = await scrape_menu_agent(request.menu_url)
+        logger.info(f"Menu scrape result: success={result.get('success', False)}")
+        return result
+    except Exception as e:
+        logger.error(f"Error scraping menu: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -511,3 +621,4 @@ if __name__ == "__main__":
         reload=True,
         log_level="info"
     )
+
