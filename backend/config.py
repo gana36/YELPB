@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # Google Gemini API
     gemini_api_key: str
 
+    # Serper API (for CrewAI web scraping)
+    serper_api_key: str = ""
+
     # Google Calendar OAuth2
     google_calendar_client_id: str
     google_calendar_client_secret: str
