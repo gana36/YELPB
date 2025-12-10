@@ -1,36 +1,37 @@
 import { useState } from 'react';
-import { motion } from 'motion/react';
-import { Users, LogIn, Sparkles, Utensils } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { UtensilsCrossed } from 'lucide-react';
 
 interface WelcomeScreenProps {
   onNavigate: (sessionCode: string) => void;
 }
 
+type View = 'LANDING' | 'JOIN_CODE' | 'NAME_INPUT';
+
 export function WelcomeScreen({ onNavigate }: WelcomeScreenProps) {
-  const [showJoinInput, setShowJoinInput] = useState(false);
-  const [joinCode, setJoinCode] = useState('');
-  const [showNameInput, setShowNameInput] = useState(false);
-  const [userName, setUserName] = useState('');
+  const [view, setView] = useState<View>('LANDING');
   const [isHost, setIsHost] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [joinCode, setJoinCode] = useState('');
 
   const handleHostSession = () => {
     setIsHost(true);
-    setShowNameInput(true);
+    setView('NAME_INPUT');
   };
 
   const handleJoinClick = () => {
     setIsHost(false);
-    setShowJoinInput(true);
+    setView('JOIN_CODE');
   };
 
   const handleJoinSession = () => {
-    if (joinCode.trim()) {
-      setShowNameInput(true);
+    if (joinCode.trim().length >= 4) {
+      setView('NAME_INPUT');
     }
   };
 
   const handleContinue = () => {
-    if (userName.trim()) {
+    if (userName.trim().length >= 2) {
       if (isHost) {
         const code = Math.random().toString(36).substring(2, 8).toUpperCase();
         localStorage.setItem('userName', userName.trim());
@@ -42,242 +43,289 @@ export function WelcomeScreen({ onNavigate }: WelcomeScreenProps) {
     }
   };
 
+  const handleBack = () => {
+    setUserName('');
+    if (isHost) {
+      setView('LANDING');
+    } else {
+      setView('JOIN_CODE');
+    }
+  };
+
+  const handleCancel = () => {
+    setJoinCode('');
+    setView('LANDING');
+  };
+
   return (
-    <div className="relative h-screen w-full overflow-hidden">
-      {/* Animated background */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center"
-        style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1721073954161-5aa2ca4fff0b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmcmllbmRzJTIwZGlubmVyJTIwdGFibGUlMjB3YXJtJTIwbGlnaHRpbmd8ZW58MXx8fHwxNzY1MTQwNDQyfDA&ixlib=rb-4.1.0&q=80&w=1080')`,
-        }}
-      >
-        <motion.div 
-          className="absolute inset-0 bg-black/60"
-          animate={{
-            background: [
-              'radial-gradient(circle at 20% 50%, rgba(249,115,22,0.15) 0%, rgba(0,0,0,0.6) 50%)',
-              'radial-gradient(circle at 80% 50%, rgba(249,115,22,0.15) 0%, rgba(0,0,0,0.6) 50%)',
-              'radial-gradient(circle at 20% 50%, rgba(249,115,22,0.15) 0%, rgba(0,0,0,0.6) 50%)',
-            ]
-          }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+    <div className="min-h-screen w-full flex flex-col" style={{ backgroundColor: '#ffffff' }}>
+      {/* Header - Professional */}
+      <div className="flex items-center justify-center gap-2.5 px-4 py-5">
+        <div className="flex items-center justify-center" style={{ color: '#F05A28' }}>
+          <UtensilsCrossed className="w-6 h-6" strokeWidth={2.5} />
+        </div>
+        <h1 className="text-xl font-bold tracking-tight" style={{ color: '#1C1917' }}>
+          CommonPlate
+        </h1>
+      </div>
+
+      {/* Hero Image with Text Overlay - Mobile Optimized */}
+      <div className="relative w-full h-56 overflow-hidden" style={{ backgroundColor: '#f9fafb' }}>
+        <img
+          src="/dining-vibe.png"
+          alt="Dining together"
+          className="w-full h-full object-cover"
         />
-      </div>
-
-      {/* Floating particles */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(20)].map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute w-1 h-1 bg-orange-500/30 rounded-full"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-            }}
-            animate={{
-              y: [0, -30, 0],
-              opacity: [0.2, 0.5, 0.2],
-              scale: [1, 1.5, 1],
-            }}
-            transition={{
-              duration: 3 + Math.random() * 2,
-              repeat: Infinity,
-              delay: Math.random() * 2,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Content */}
-      <div className="relative z-10 flex h-full flex-col items-center justify-center px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
-          className="glassmorphism-premium w-full max-w-md rounded-[32px] p-10 text-center backdrop-blur-2xl"
-        >
-          {/* Logo with icon */}
-          <motion.div
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.3, duration: 0.8, type: 'spring', bounce: 0.4 }}
-            className="mb-4 flex justify-center"
-          >
-            <div className="relative">
-              <motion.div
-                animate={{
-                  boxShadow: [
-                    '0 0 20px rgba(249,115,22,0.3)',
-                    '0 0 40px rgba(249,115,22,0.6)',
-                    '0 0 20px rgba(249,115,22,0.3)',
-                  ]
-                }}
-                transition={{ duration: 2, repeat: Infinity }}
-                className="rounded-full bg-gradient-to-br from-[#F97316] to-[#fb923c] p-5"
-              >
-                <Utensils className="h-10 w-10 text-white" strokeWidth={2.5} />
-              </motion.div>
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-                className="absolute -inset-4 rounded-full border-2 border-dashed border-orange-500/30"
-              />
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-          >
-            <h1 className="mb-2 bg-gradient-to-r from-white via-orange-100 to-white bg-clip-text text-5xl text-transparent" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800, letterSpacing: '-0.02em' }}>
-              CommonPlate
+        {/* Gradient Overlay for Text Visibility */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.6) 100%)'
+          }}
+        />
+        {/* Headline & Subtitle Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center px-5">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-1.5 leading-tight">
+              <span style={{ color: '#FFFFFF', textShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+                Dining decisions,
+              </span>
+              <span style={{ color: '#F05A28', textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
+                simplified.
+              </span>
             </h1>
-            <p className="mb-3 text-gray-300" style={{ fontSize: '1.1rem' }}>
-              Dine together, decide together
+            <p
+              className="text-sm leading-snug"
+              style={{
+                color: '#F5F5F4',
+                textShadow: '0 1px 4px rgba(0,0,0,0.4)'
+              }}
+            >
+              No more endless group chats. Match, decide, and eat in seconds.
             </p>
-            <div className="mb-10 flex items-center justify-center gap-2 text-xs text-orange-400/80">
-              <Sparkles className="h-3 w-3" />
-              <span>Powered by AI matchmaking</span>
-            </div>
-          </motion.div>
+          </div>
+        </div>
+      </div>
 
-          {/* Buttons */}
-          <div className="flex flex-col gap-4">
-            {showNameInput ? (
+      {/* Main Content - Centered - Mobile Optimized */}
+      <div className="flex-1 flex items-center justify-center px-5 py-6">
+        <div className="w-full max-w-sm text-center">
+          <AnimatePresence mode="wait">
+            {/* Landing View */}
+            {view === 'LANDING' && (
               <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className="space-y-3"
+                key="landing"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
               >
-                <div className="mb-4 text-center">
-                  <h3 className="text-lg text-white mb-1" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
-                    What&apos;s your name?
-                  </h3>
-                  <p className="text-sm text-gray-400">
-                    {isHost ? 'Let your friends know who\'s hosting!' : `Joining room ${joinCode}`}
-                  </p>
-                </div>
-                <input
-                  type="text"
-                  value={userName}
-                  onChange={(e) => setUserName(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleContinue()}
-                  placeholder="Enter your name"
-                  maxLength={20}
-                  className="w-full rounded-2xl border-2 border-orange-500/50 bg-black/40 px-6 py-4 text-center text-xl text-white placeholder-gray-500 outline-none backdrop-blur-sm transition-all focus:border-orange-500 focus:shadow-lg focus:shadow-orange-500/30"
-                  style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}
-                  autoFocus
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setShowNameInput(false);
-                      setUserName('');
-                      if (!isHost) setShowJoinInput(true);
-                    }}
-                    className="flex-1 rounded-xl border border-white/30 bg-white/5 px-4 py-3 text-sm text-gray-300 transition-colors hover:bg-white/10"
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={handleContinue}
-                    disabled={userName.trim().length < 2}
-                    className="flex-1 rounded-xl bg-gradient-to-r from-[#F97316] to-[#fb923c] px-4 py-3 text-sm text-white shadow-lg shadow-orange-500/30 transition-all disabled:opacity-40 disabled:shadow-none"
-                    style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
-                  >
-                    Continue
-                  </button>
-                </div>
+                <h2 className="text-3xl font-bold mb-3" style={{ color: '#111827' }}>
+                  Welcome
+                </h2>
+                <p className="text-sm mb-4" style={{ color: '#6b7280' }}>
+                  Start a session or join an existing room
+                </p>
               </motion.div>
-            ) : !showJoinInput ? (
-              <>
-                <motion.button
-                  whileHover={{ scale: 1.02, y: -2 }}
-                  whileTap={{ scale: 0.98 }}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.6 }}
-                  onClick={handleHostSession}
-                  className="group relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#F97316] to-[#fb923c] px-8 py-5 shadow-xl shadow-orange-500/30 transition-shadow hover:shadow-orange-500/50"
-                >
-                  <motion.div 
-                    className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0"
-                    animate={{ x: ['-200%', '200%'] }}
-                    transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-                  />
-                  <div className="relative flex items-center justify-center gap-3">
-                    <Users className="h-6 w-6 text-white" strokeWidth={2.5} />
-                    <span className="text-lg text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
-                      Host a Session
-                    </span>
-                  </div>
-                </motion.button>
+            )}
 
-                <motion.button
-                  whileHover={{ scale: 1.02, y: -2 }}
-                  whileTap={{ scale: 0.98 }}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.7 }}
-                  onClick={handleJoinClick}
-                  className="group rounded-2xl border-2 border-white/30 bg-white/5 px-8 py-5 backdrop-blur-md transition-all hover:border-orange-400/50 hover:bg-white/10"
-                >
-                  <div className="flex items-center justify-center gap-3">
-                    <LogIn className="h-6 w-6 text-white transition-colors group-hover:text-orange-400" strokeWidth={2.5} />
-                    <span className="text-lg text-white transition-colors group-hover:text-orange-400" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
-                      Join Room
-                    </span>
-                  </div>
-                </motion.button>
-              </>
-            ) : (
+            {/* Join Code View */}
+            {view === 'JOIN_CODE' && (
               <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className="space-y-3"
+                key="join-code"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
               >
+                <h2 className="text-3xl font-bold mb-3" style={{ color: '#111827' }}>
+                  Join Room
+                </h2>
+                <p className="text-sm mb-6" style={{ color: '#6b7280' }}>
+                  Enter the 4-6 character room code
+                </p>
+
                 <input
                   type="text"
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   onKeyPress={(e) => e.key === 'Enter' && handleJoinSession()}
-                  placeholder="Enter room code"
+                  placeholder="ABCD"
                   maxLength={6}
-                  className="w-full rounded-2xl border-2 border-orange-500/50 bg-black/40 px-6 py-4 text-center text-xl tracking-widest text-white placeholder-gray-500 outline-none backdrop-blur-sm transition-all focus:border-orange-500 focus:shadow-lg focus:shadow-orange-500/30"
-                  style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                  className="w-full text-center text-3xl font-bold tracking-widest py-5 rounded-lg border-2 focus:outline-none transition-colors"
+                  style={{
+                    backgroundColor: '#f9fafb',
+                    color: '#111827',
+                    borderColor: '#e5e7eb',
+                    fontFamily: 'monospace'
+                  }}
+                  onFocus={(e) => e.currentTarget.style.borderColor = '#f97316'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = '#e5e7eb'}
                   autoFocus
                 />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowJoinInput(false)}
-                    className="flex-1 rounded-xl border border-white/30 bg-white/5 px-4 py-3 text-sm text-gray-300 transition-colors hover:bg-white/10"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleJoinSession}
-                    disabled={joinCode.length < 4}
-                    className="flex-1 rounded-xl bg-gradient-to-r from-[#F97316] to-[#fb923c] px-4 py-3 text-sm text-white shadow-lg shadow-orange-500/30 transition-all disabled:opacity-40 disabled:shadow-none"
-                    style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
-                  >
-                    Join Now
-                  </button>
-                </div>
               </motion.div>
             )}
-          </div>
-        </motion.div>
 
-        {/* Bottom tagline */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
-          className="mt-8 text-sm text-gray-400"
+            {/* Name Input View */}
+            {view === 'NAME_INPUT' && (
+              <motion.div
+                key="name-input"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <h2 className="text-3xl font-bold mb-3" style={{ color: '#111827' }}>
+                  {isHost ? 'Almost There' : `Joining ${joinCode}`}
+                </h2>
+                <p className="text-sm mb-6" style={{ color: '#6b7280' }}>
+                  What should we call you?
+                </p>
+
+                <input
+                  type="text"
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleContinue()}
+                  placeholder="Your name"
+                  maxLength={20}
+                  className="w-full text-center text-2xl font-semibold py-5 rounded-lg border-2 focus:outline-none transition-colors"
+                  style={{
+                    backgroundColor: '#f9fafb',
+                    color: '#111827',
+                    borderColor: '#e5e7eb'
+                  }}
+                  onFocus={(e) => e.currentTarget.style.borderColor = '#f97316'}
+                  onBlur={(e) => e.currentTarget.style.borderColor = '#e5e7eb'}
+                  autoFocus
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Bottom Card with Buttons - Mobile Optimized */}
+      <div className="px-5 pb-6">
+        <div
+          className="w-full max-w-sm mx-auto bg-white rounded-2xl shadow-lg p-5 space-y-3"
+          style={{
+            backgroundColor: '#ffffff',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
+            border: '1px solid #f3f4f6'
+          }}
         >
-          The future of group dining is here
-        </motion.p>
+          <AnimatePresence mode="wait">
+            {/* Landing View Buttons */}
+            {view === 'LANDING' && (
+              <motion.div
+                key="landing-buttons"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-3"
+              >
+                <button
+                  onClick={handleHostSession}
+                  className="w-full font-semibold py-4 rounded-xl transition-colors shadow-sm"
+                  style={{ backgroundColor: '#f97316', color: '#ffffff' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#ea580c'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f97316'}
+                >
+                  Host a Session
+                </button>
+                <button
+                  onClick={handleJoinClick}
+                  className="w-full font-semibold py-4 rounded-xl transition-colors"
+                  style={{ backgroundColor: '#f3f4f6', color: '#111827' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e5e7eb'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                >
+                  Join a Room
+                </button>
+              </motion.div>
+            )}
+
+            {/* Join Code View Buttons */}
+            {view === 'JOIN_CODE' && (
+              <motion.div
+                key="join-buttons"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex gap-3"
+              >
+                <button
+                  onClick={handleCancel}
+                  className="flex-1 font-semibold py-4 rounded-xl transition-colors"
+                  style={{ backgroundColor: '#f3f4f6', color: '#111827' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e5e7eb'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleJoinSession}
+                  disabled={joinCode.length < 4}
+                  className="flex-1 font-semibold py-4 rounded-xl transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: joinCode.length < 4 ? '#fdba74' : '#f97316',
+                    color: '#ffffff'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (joinCode.length >= 4) e.currentTarget.style.backgroundColor = '#ea580c';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (joinCode.length >= 4) e.currentTarget.style.backgroundColor = '#f97316';
+                  }}
+                >
+                  Continue
+                </button>
+              </motion.div>
+            )}
+
+            {/* Name Input View Buttons */}
+            {view === 'NAME_INPUT' && (
+              <motion.div
+                key="name-buttons"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex gap-3"
+              >
+                <button
+                  onClick={handleBack}
+                  className="flex-1 font-semibold py-4 rounded-xl transition-colors"
+                  style={{ backgroundColor: '#f3f4f6', color: '#111827' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e5e7eb'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleContinue}
+                  disabled={userName.trim().length < 2}
+                  className="flex-1 font-semibold py-4 rounded-xl transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: userName.trim().length < 2 ? '#fdba74' : '#f97316',
+                    color: '#ffffff'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (userName.trim().length >= 2) e.currentTarget.style.backgroundColor = '#ea580c';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (userName.trim().length >= 2) e.currentTarget.style.backgroundColor = '#f97316';
+                  }}
+                >
+                  {isHost ? 'Start' : 'Join'}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );

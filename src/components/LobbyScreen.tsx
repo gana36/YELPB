@@ -25,12 +25,14 @@ const dietaryOptions = ['None', 'Vegetarian', 'Vegan', 'Gluten-Free', 'Halal', '
 const distanceOptions = ['0.5 mi', '1 mi', '2 mi', '5 mi', '10 mi'];
 
 const userColors = [
-  'from-orange-500 to-red-500',
-  'from-purple-500 to-pink-500',
-  'from-blue-500 to-cyan-500',
-  'from-green-500 to-emerald-500',
-  'from-yellow-500 to-orange-500',
-  'from-pink-500 to-rose-500',
+  'from-orange-400 to-orange-600',
+  'from-teal-400 to-teal-600',
+  'from-purple-400 to-purple-600',
+  'from-amber-400 to-amber-600',
+  'from-rose-400 to-rose-600',
+  'from-indigo-400 to-indigo-600',
+  'from-emerald-400 to-emerald-600',
+  'from-sky-400 to-sky-600'
 ];
 
 interface Activity {
@@ -58,6 +60,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
   const [showNewActivity, setShowNewActivity] = useState(false);
   const [chatMinimized, setChatMinimized] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<SessionUser[]>([]);
+  const [showOnlineUsers, setShowOnlineUsers] = useState(false);
   const [currentUserId] = useState(() => `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
   const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
 
@@ -225,113 +228,129 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-gradient-to-b from-zinc-950 via-black to-zinc-950">
-      {/* Background effects */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none" style={{
-        backgroundImage: `url('https://images.unsplash.com/photo-1657593088889-5105c637f2a8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxyZXN0YXVyYW50JTIwaW50ZXJpb3IlMjBtb29keXxlbnwxfHx8fDE3NjUxNDA0NDN8MA&ixlib=rb-4.1.0&q=80&w=1080')`,
-        backgroundSize: 'cover'
-      }} />
+    <div className="flex h-screen flex-col" style={{ backgroundColor: '#ffffff' }}>
 
-      <motion.div 
-        className="absolute left-1/2 top-20 h-96 w-96 -translate-x-1/2 rounded-full bg-orange-500/10 blur-[120px] pointer-events-none"
-        animate={{
-          scale: [1, 1.2, 1],
-          opacity: [0.3, 0.5, 0.3],
-        }}
-        transition={{ duration: 4, repeat: Infinity }}
-      />
-
-      {/* Fixed Header */}
+      {/* Header - Mobile Optimized */}
       <motion.div
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="relative z-20 flex-shrink-0 border-b border-white/5 bg-black/40 p-4 backdrop-blur-xl"
+        className="relative z-20 flex-shrink-0 border-b px-4 py-3"
+        style={{ borderColor: '#e5e7eb', backgroundColor: '#ffffff' }}
       >
-        {/* Title and Room Code on same line */}
-        <div className="mb-3 flex items-center justify-center gap-3">
-          <h2 className="text-2xl text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800 }}>
-            THE LOBBY
-          </h2>
+        <div className="flex items-center justify-between">
+          {/* Online Users - Clickable */}
+          <div className="relative">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowOnlineUsers(!showOnlineUsers)}
+              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-all border"
+              style={{
+                backgroundColor: showOnlineUsers ? '#fef3f2' : '#f9fafb',
+                borderColor: showOnlineUsers ? '#F05A28' : '#d1d5db'
+              }}
+            >
+              <Users className="h-4 w-4" style={{ color: '#F05A28' }} />
+              <span className="text-sm font-bold" style={{ color: '#1C1917' }}>
+                {onlineUsers.length}
+              </span>
+            </motion.button>
+
+            {/* Users Dropdown */}
+            <AnimatePresence>
+              {showOnlineUsers && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  className="absolute top-full left-0 mt-2 rounded-xl border shadow-lg overflow-hidden"
+                  style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db', minWidth: '200px' }}
+                >
+                  <div className="px-3 py-2 border-b" style={{ backgroundColor: '#f9fafb', borderColor: '#e5e7eb' }}>
+                    <span className="text-xs font-bold" style={{ color: '#6b7280' }}>ONLINE USERS</span>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {onlineUsers.map((user, index) => (
+                      <motion.div
+                        key={user.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className="flex items-center gap-3 px-3 py-2.5 border-b last:border-b-0 transition-colors"
+                        style={{ borderColor: '#f3f4f6' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ffffff'}
+                      >
+                        <div className="relative">
+                          <div
+                            className={`h-8 w-8 rounded-full bg-gradient-to-br ${user.color} flex items-center justify-center ring-2 ring-white`}
+                          >
+                            <span className="text-xs font-bold text-white">
+                              {user.name.substring(0, 2).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 bg-green-500" style={{ borderColor: '#ffffff' }} />
+                        </div>
+                        <span className="text-sm font-medium" style={{ color: '#1C1917' }}>
+                          {user.name}
+                        </span>
+                      </motion.div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Title */}
+          <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-bold tracking-wide" style={{ color: '#1C1917' }}>
+            LOBBY
+          </h1>
+
+          {/* Session Code */}
           <motion.button
             onClick={handleCopyCode}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 backdrop-blur-md transition-colors hover:bg-white/10"
+            whileTap={{ scale: 0.95 }}
+            className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-all"
+            style={{
+              backgroundColor: copied ? '#fef3f2' : '#f9fafb',
+              borderColor: copied ? '#F05A28' : '#d1d5db'
+            }}
           >
-            <span className="text-xs text-gray-400">CODE:</span>
-            <span className="text-sm text-orange-400" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+            <span className="text-xs font-mono font-bold tracking-wide" style={{ color: '#1C1917' }}>
               {sessionCode}
             </span>
-            {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3 text-gray-400" />}
+            {copied ? (
+              <Check className="h-3 w-3" style={{ color: '#F05A28' }} />
+            ) : (
+              <Copy className="h-3 w-3" style={{ color: '#6b7280' }} />
+            )}
           </motion.button>
-        </div>
-
-        <div className="flex items-center justify-center gap-2">
-          <Users className="h-3 w-3 text-gray-400" />
-          <div className="flex -space-x-2">
-            {onlineUsers.map((user, index) => (
-              <motion.div
-                key={user.id}
-                initial={{ scale: 0, x: -20 }}
-                animate={{ scale: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="relative"
-                style={{ zIndex: hoveredUserId === user.id ? 50 : 10 }}
-                onMouseEnter={() => setHoveredUserId(user.id)}
-                onMouseLeave={() => setHoveredUserId(null)}
-              >
-                <div className={`h-7 w-7 rounded-full bg-gradient-to-br ${user.color} ring-2 ${hoveredUserId === user.id ? 'ring-[#F97316]' : 'ring-black'} flex items-center justify-center cursor-pointer transition-all duration-200 ${hoveredUserId === user.id ? 'scale-110' : 'scale-100'}`}>
-                  <span className="text-[10px] font-bold text-white" style={{ fontFamily: 'Montserrat, sans-serif' }}>
-                    {user.name.substring(0, 2).toUpperCase()}
-                  </span>
-                </div>
-                <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-black bg-green-500" />
-
-                {/* Tooltip */}
-                {hoveredUserId === user.id && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 pointer-events-none"
-                  >
-                    <div className="bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-xl shadow-orange-500/50 whitespace-nowrap">
-                      {user.name}
-                    </div>
-                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-0.5">
-                      <div className="border-[5px] border-transparent border-t-[#F97316]" />
-                    </div>
-                  </motion.div>
-                )}
-              </motion.div>
-            ))}
-          </div>
-          <span className="text-xs text-gray-400">{onlineUsers.length} online</span>
         </div>
       </motion.div>
 
-      {/* Activity Feed - Compact */}
+      {/* Activity Feed - Light Mode */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.1 }}
         className="relative z-10 flex-shrink-0 px-4 pt-3"
       >
-        <div className="glassmorphism-premium overflow-hidden rounded-xl backdrop-blur-xl">
-          <div className="flex items-center justify-between border-b border-white/5 bg-gradient-to-r from-orange-500/10 to-transparent px-3 py-2">
+        <div className="overflow-hidden rounded-xl border" style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db' }}>
+          <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: '#f3f4f6', backgroundColor: '#fef3f2' }}>
             <div className="flex items-center gap-2">
               <motion.div animate={{ rotate: showNewActivity ? [0, -10, 10, -10, 0] : 0 }}>
-                <Bell className="h-3 w-3 text-[#F97316]" />
+                <Bell className="h-3 w-3" style={{ color: '#F05A28' }} />
               </motion.div>
-              <h3 className="text-xs text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+              <h3 className="text-xs font-bold" style={{ color: '#1C1917' }}>
                 Activity Feed
               </h3>
             </div>
-            <div className="flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5">
-              <div className="h-1 w-1 animate-pulse rounded-full bg-orange-400" />
-              <span className="text-xs text-orange-400">Live</span>
+            <div className="flex items-center gap-1 rounded-full px-2 py-0.5" style={{ backgroundColor: '#fed7aa' }}>
+              <div className="h-1 w-1 animate-pulse rounded-full" style={{ backgroundColor: '#f97316' }} />
+              <span className="text-xs font-medium" style={{ color: '#c2410c' }}>Live</span>
             </div>
           </div>
-          
+
           <div className="max-h-24 overflow-y-auto p-2 space-y-1.5">
             <AnimatePresence mode="popLayout">
               {activities.slice(-3).reverse().map((activity) => (
@@ -340,11 +359,14 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                   initial={{ opacity: 0, x: -20, height: 0 }}
                   animate={{ opacity: 1, x: 0, height: 'auto' }}
                   exit={{ opacity: 0, x: 20, height: 0 }}
-                  className="flex items-center gap-2 rounded-lg bg-white/5 p-2 hover:bg-white/10 transition-colors"
+                  className="flex items-center gap-2 rounded-lg p-2 transition-colors"
+                  style={{ backgroundColor: '#f9fafb' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
                 >
                   <div className={`h-5 w-5 rounded-full bg-gradient-to-br ${activity.userColor} flex-shrink-0`} />
-                  <p className="flex-1 text-xs text-gray-300 truncate min-w-0">
-                    <span className="text-white font-semibold">{activity.user}</span> {activity.message}
+                  <p className="flex-1 text-xs truncate min-w-0" style={{ color: '#6b7280' }}>
+                    <span className="font-semibold" style={{ color: '#1C1917' }}>{activity.user}</span> {activity.message}
                   </p>
                   <span className="text-sm flex-shrink-0">{getActivityIcon(activity.type)}</span>
                 </motion.div>
@@ -354,18 +376,18 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
         </div>
       </motion.div>
 
-      {/* Group Consensus Summary */}
+      {/* Group Consensus Summary - Light Mode */}
       {onlineUsers.length > 1 && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className="relative z-10 px-4 pt-3"
         >
-          <div className="glassmorphism-premium overflow-hidden rounded-xl backdrop-blur-xl border border-orange-500/20">
-            <div className="bg-gradient-to-r from-orange-500/20 to-transparent px-3 py-2 border-b border-white/5">
+          <div className="overflow-hidden rounded-xl border" style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db' }}>
+            <div className="px-3 py-2 border-b" style={{ backgroundColor: '#fff7ed', borderColor: '#fdba74' }}>
               <div className="flex items-center gap-2">
-                <Users className="h-3.5 w-3.5 text-[#F97316]" />
-                <h3 className="text-xs text-white" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+                <Users className="h-3.5 w-3.5" style={{ color: '#F05A28' }} />
+                <h3 className="text-xs font-bold" style={{ color: '#1C1917' }}>
                   GROUP CONSENSUS
                 </h3>
               </div>
@@ -373,22 +395,22 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
             <div className="p-3 space-y-2">
               <div className="flex items-start gap-2">
                 <div className="flex-shrink-0 mt-0.5">
-                  <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                  <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#ef4444' }} />
                 </div>
                 <div className="flex-1">
-                  <p className="text-[10px] text-red-400 font-semibold mb-0.5">MUST-HAVES</p>
-                  <p className="text-xs text-gray-300">
+                  <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#dc2626' }}>MUST-HAVES</p>
+                  <p className="text-xs" style={{ color: '#6b7280' }}>
                     Budget max: {budget || '—'} • Distance: {distance} • Dietary: {dietary}
                   </p>
                 </div>
               </div>
               <div className="flex items-start gap-2">
                 <div className="flex-shrink-0 mt-0.5">
-                  <div className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                  <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#eab308' }} />
                 </div>
                 <div className="flex-1">
-                  <p className="text-[10px] text-yellow-400 font-semibold mb-0.5">PREFERENCES</p>
-                  <p className="text-xs text-gray-300">
+                  <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#ca8a04' }}>PREFERENCES</p>
+                  <p className="text-xs" style={{ color: '#6b7280' }}>
                     Cuisine: {cuisine || '—'} • Vibe: {vibe || '—'}
                   </p>
                 </div>
@@ -398,13 +420,13 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
         </motion.div>
       )}
 
-      {/* Scrollable Preferences Section */}
+      {/* Scrollable Preferences Section - iPhone 15 Pro */}
       <div className="relative z-10 flex-1 overflow-y-auto px-4 py-3">
-        <div className="space-y-2.5 pb-4">
+        <div className="space-y-3 pb-6">
           {/* Budget */}
           <CompactPreference
             label="BUDGET"
-            icon="💰"
+            icon=""
             value={budget}
             locked={locked}
           >
@@ -423,24 +445,40 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                         updateVote('budget', opt);
                         addActivity(`voted for ${opt} budget`);
                       }}
-                      className={`relative flex-1 rounded-lg px-2.5 py-2 text-sm transition-all ${
-                        budget === opt
-                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
-                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                    }`}
-                    style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
-                  >
-                    {opt}
-                    {voteCount > 0 && (
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
-                      >
-                        {voteCount}
-                      </motion.div>
-                    )}
-                  </motion.button>
+                      className={`relative flex-1 rounded-lg px-2.5 py-2.5 text-[13px] font-bold transition-all border ${budget === opt
+                        ? 'border-orange-500'
+                        : 'border-gray-300'
+                        }`}
+                      style={{
+                        backgroundColor: budget === opt ? '#f97316' : '#ffffff',
+                        color: budget === opt ? '#ffffff' : '#374151',
+                        minHeight: '44px'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (budget !== opt) {
+                          e.currentTarget.style.backgroundColor = '#f9fafb';
+                          e.currentTarget.style.borderColor = '#9ca3af';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (budget !== opt) {
+                          e.currentTarget.style.backgroundColor = '#ffffff';
+                          e.currentTarget.style.borderColor = '#d1d5db';
+                        }
+                      }}
+                    >
+                      {opt}
+                      {voteCount > 0 && (
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-white"
+                          style={{ backgroundColor: '#f97316' }}
+                        >
+                          {voteCount}
+                        </motion.div>
+                      )}
+                    </motion.button>
                   );
                 })}
               </div>
@@ -448,7 +486,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
           </CompactPreference>
 
           {/* Cuisine */}
-          <CompactPreference label="CUISINE" icon="🍽️" value={cuisine} locked={locked}>
+          <CompactPreference label="CUISINE" icon="" value={cuisine} locked={locked}>
             {!locked && (
               <div className="w-full -mr-3">
                 <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -464,19 +502,33 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                           updateVote('cuisine', opt);
                           addActivity(`prefers ${opt} cuisine`);
                         }}
-                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
-                          cuisine === opt
-                            ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
-                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                        }`}
-                        style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                        className={`relative flex-shrink-0 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap border ${cuisine === opt
+                          ? 'shadow-lg border-orange-500'
+                          : 'border-gray-300'
+                          }`}
+                        style={{
+                          backgroundColor: cuisine === opt ? '#f97316' : '#ffffff',
+                          color: cuisine === opt ? '#ffffff' : '#374151'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (cuisine !== opt) {
+                            e.currentTarget.style.backgroundColor = '#f9fafb';
+                            e.currentTarget.style.borderColor = '#9ca3af';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (cuisine !== opt) {
+                            e.currentTarget.style.backgroundColor = '#ffffff';
+                            e.currentTarget.style.borderColor = '#d1d5db';
+                          }
+                        }}
                       >
                         {opt}
                         {voteCount > 0 && (
                           <motion.div
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
-                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
+                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
                           >
                             {voteCount}
                           </motion.div>
@@ -490,7 +542,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
           </CompactPreference>
 
           {/* Vibe */}
-          <CompactPreference label="VIBE" icon="✨" value={vibe} locked={locked}>
+          <CompactPreference label="VIBE" icon="" value={vibe} locked={locked}>
             {!locked && (
               <div className="w-full -mr-3">
                 <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -506,19 +558,33 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                           updateVote('vibe', opt);
                           addActivity(`wants ${opt} vibe`);
                         }}
-                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
-                          vibe === opt
-                            ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
-                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                        }`}
-                        style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                        className={`relative flex-shrink-0 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap border ${vibe === opt
+                          ? 'shadow-lg border-orange-500'
+                          : 'border-gray-300'
+                          }`}
+                        style={{
+                          backgroundColor: vibe === opt ? '#f97316' : '#ffffff',
+                          color: vibe === opt ? '#ffffff' : '#374151'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (vibe !== opt) {
+                            e.currentTarget.style.backgroundColor = '#f9fafb';
+                            e.currentTarget.style.borderColor = '#9ca3af';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (vibe !== opt) {
+                            e.currentTarget.style.backgroundColor = '#ffffff';
+                            e.currentTarget.style.borderColor = '#d1d5db';
+                          }
+                        }}
                       >
                         {opt}
                         {voteCount > 0 && (
                           <motion.div
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
-                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
+                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
                           >
                             {voteCount}
                           </motion.div>
@@ -532,7 +598,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
           </CompactPreference>
 
           {/* Distance */}
-          <CompactPreference label="DISTANCE" icon={<MapPin className="h-4 w-4" />} value={distance} locked={locked}>
+          <CompactPreference label="DISTANCE" icon="" value={distance} locked={locked}>
             {!locked && (
               <div className="flex gap-1.5">
                 {distanceOptions.map(opt => {
@@ -547,19 +613,33 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                         updateVote('distance', opt);
                         addActivity(`set distance to ${opt}`);
                       }}
-                      className={`relative flex-1 rounded-lg px-2 py-2 text-xs transition-all ${
-                        distance === opt
-                          ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
-                          : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                      }`}
-                      style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                      className={`relative flex-1 rounded-lg px-2 py-2.5 text-xs font-bold transition-all border ${distance === opt
+                        ? 'shadow-lg border-orange-500'
+                        : 'border-gray-300'
+                        }`}
+                      style={{
+                        backgroundColor: distance === opt ? '#f97316' : '#ffffff',
+                        color: distance === opt ? '#ffffff' : '#374151'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (distance !== opt) {
+                          e.currentTarget.style.backgroundColor = '#f9fafb';
+                          e.currentTarget.style.borderColor = '#9ca3af';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (distance !== opt) {
+                          e.currentTarget.style.backgroundColor = '#ffffff';
+                          e.currentTarget.style.borderColor = '#d1d5db';
+                        }
+                      }}
                     >
                       {opt}
                       {voteCount > 0 && (
                         <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
-                          className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
+                          className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
                         >
                           {voteCount}
                         </motion.div>
@@ -572,7 +652,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
           </CompactPreference>
 
           {/* Dietary */}
-          <CompactPreference label="DIETARY" icon={<Apple className="h-4 w-4" />} value={dietary} locked={locked}>
+          <CompactPreference label="DIETARY" icon="" value={dietary} locked={locked}>
             {!locked && (
               <div className="w-full -mr-3">
                 <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -588,19 +668,33 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                           updateVote('dietary', opt);
                           addActivity(`set dietary to ${opt}`);
                         }}
-                        className={`relative flex-shrink-0 rounded-lg px-3 py-2 text-xs transition-all whitespace-nowrap ${
-                          dietary === opt
-                            ? 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/30'
-                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                        }`}
-                        style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}
+                        className={`relative flex-shrink-0 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap border ${dietary === opt
+                          ? 'shadow-lg border-orange-500'
+                          : 'border-gray-300'
+                          }`}
+                        style={{
+                          backgroundColor: dietary === opt ? '#f97316' : '#ffffff',
+                          color: dietary === opt ? '#ffffff' : '#374151'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (dietary !== opt) {
+                            e.currentTarget.style.backgroundColor = '#f9fafb';
+                            e.currentTarget.style.borderColor = '#9ca3af';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (dietary !== opt) {
+                            e.currentTarget.style.backgroundColor = '#ffffff';
+                            e.currentTarget.style.borderColor = '#d1d5db';
+                          }
+                        }}
                       >
                         {opt}
                         {voteCount > 0 && (
                           <motion.div
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
-                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-black"
+                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
                           >
                             {voteCount}
                           </motion.div>
@@ -616,21 +710,21 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
           {/* Date & Time */}
           <motion.div
             whileHover={!locked ? { scale: 1.005 } : {}}
-            className="glassmorphism-premium rounded-xl p-3 backdrop-blur-xl transition-all relative overflow-visible"
+            className="rounded-xl p-3 transition-all relative overflow-visible border"
+            style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db' }}
           >
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2.5 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <span className="text-sm">📅</span>
-                <span className="text-xs tracking-wider text-gray-400">DATE & TIME</span>
+                <span className="text-[10px] tracking-widest font-extrabold uppercase" style={{ color: '#9ca3af' }}>DATE & TIME</span>
               </div>
               {locked && (
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }}>
-                  <Lock className="h-3 w-3 text-[#F97316]" />
+                  <Lock className="h-3 w-3" style={{ color: '#F05A28' }} />
                 </motion.div>
               )}
             </div>
             {!locked ? (
-              <div className="flex gap-2">
+              <div className="flex gap-1.5">
                 <input
                   type="date"
                   value={bookingDate}
@@ -639,8 +733,16 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                     addActivity(`set date to ${e.target.value}`);
                   }}
                   min={new Date().toISOString().split('T')[0]}
-                  className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white focus:border-[#F97316] focus:outline-none"
-                  style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}
+                  className="flex-1 rounded-lg border px-2.5 py-2.5 text-sm font-medium focus:outline-none transition-all"
+                  style={{ backgroundColor: '#f9fafb', borderColor: '#d1d5db', color: '#1C1917', minHeight: '44px' }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = '#f97316';
+                    e.currentTarget.style.backgroundColor = '#ffffff';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.backgroundColor = '#f9fafb';
+                  }}
                 />
                 <input
                   type="time"
@@ -649,22 +751,28 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                     setBookingTime(e.target.value);
                     addActivity(`set time to ${e.target.value}`);
                   }}
-                  className="w-24 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white focus:border-[#F97316] focus:outline-none"
-                  style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}
+                  className="w-24 rounded-lg border px-2.5 py-2.5 text-sm font-medium focus:outline-none transition-all"
+                  style={{ backgroundColor: '#f9fafb', borderColor: '#d1d5db', color: '#1C1917', minHeight: '44px' }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = '#f97316';
+                    e.currentTarget.style.backgroundColor = '#ffffff';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.backgroundColor = '#f9fafb';
+                  }}
                 />
               </div>
             ) : (
               <div className="flex items-center gap-2">
                 <motion.div
-                  key={`${bookingDate}-${bookingTime}`}
+                  key={`${bookingDate} - ${bookingTime}`}
                   initial={{ y: -8, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
-                  className="flex-1 rounded-lg p-2 text-center transition-all bg-gradient-to-r from-[#F97316]/20 to-orange-600/20 shadow-[0_0_20px_rgba(249,115,22,0.15)]"
+                  className="flex-1 rounded-lg px-2.5 py-2 text-center transition-all"
+                  style={{ backgroundColor: '#ffedd5', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <span
-                    className="text-sm text-[#F97316]"
-                    style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800 }}
-                  >
+                  <span className="text-sm font-bold" style={{ color: '#F05A28' }}>
                     {new Date(bookingDate).toLocaleDateString()} at {bookingTime}
                   </span>
                 </motion.div>
@@ -672,44 +780,33 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
             )}
           </motion.div>
 
-          {/* Action Button */}
+          {/* Action Button - iPhone 15 Pro Optimized */}
           {!locked ? (
             <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => setLocked(true)}
-              className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#F97316] to-[#fb923c] py-3 shadow-xl shadow-orange-500/30"
+              className="relative w-full overflow-hidden rounded-lg py-3.5 font-bold text-white border border-orange-500"
+              style={{ backgroundColor: '#f97316', minHeight: '52px', fontSize: '15px' }}
             >
-              <motion.div 
-                className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0"
-                animate={{ x: ['-200%', '200%'] }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-              />
               <div className="relative flex items-center justify-center gap-2">
                 <Lock className="h-4 w-4" />
-                <span className="text-sm" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+                <span>
                   Lock Preferences
                 </span>
               </div>
             </motion.button>
           ) : (
             <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => onNavigate({ cuisine, budget, vibe, dietary, distance, bookingDate, bookingTime, partySize })}
-              className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#F97316] via-orange-500 to-[#fb923c] py-3 shadow-xl shadow-orange-500/40"
-              animate={{
-                boxShadow: [
-                  '0 20px 40px -12px rgba(249,115,22,0.4)',
-                  '0 20px 60px -12px rgba(249,115,22,0.6)',
-                  '0 20px 40px -12px rgba(249,115,22,0.4)',
-                ]
-              }}
-              transition={{ duration: 2, repeat: Infinity }}
+              className="relative w-full overflow-hidden rounded-lg py-3.5 font-bold text-white border border-orange-600"
+              style={{ backgroundColor: '#f97316', minHeight: '52px', fontSize: '15px' }}
             >
               <div className="relative flex items-center justify-center gap-2">
                 <Zap className="h-4 w-4" fill="currentColor" />
-                <span className="text-sm" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+                <span>
                   Start Swiping
                 </span>
               </div>
@@ -767,17 +864,16 @@ function CompactPreference({ label, icon, value, locked, children }: {
   return (
     <motion.div
       whileHover={!locked ? { scale: 1.005 } : {}}
-      className="glassmorphism-premium rounded-xl p-3 backdrop-blur-xl transition-all relative overflow-visible"
-      style={{ zIndex: children ? 30 : 10 }}
+      className="rounded-xl p-3 transition-all relative overflow-visible border"
+      style={{ zIndex: children ? 30 : 10, backgroundColor: '#ffffff', borderColor: '#d1d5db' }}
     >
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-2.5 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          {typeof icon === 'string' ? <span className="text-sm">{icon}</span> : icon}
-          <span className="text-xs tracking-wider text-gray-400">{label}</span>
+          <span className="text-[10px] tracking-widest font-extrabold uppercase" style={{ color: '#9ca3af' }}>{label}</span>
         </div>
         {locked && (
           <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }}>
-            <Lock className="h-3 w-3 text-[#F97316]" />
+            <Lock className="h-3 w-3" style={{ color: '#F05A28' }} />
           </motion.div>
         )}
       </div>
@@ -795,38 +891,50 @@ function MiniDropdown({ options, value, onChange, open, onToggle }: {
 }) {
   return (
     <div className="relative">
-      <button
+      <motion.button
+        whileTap={{ scale: 0.98 }}
         onClick={onToggle}
-        className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-2 text-xs text-white transition-colors hover:bg-white/20"
+        className="flex items-center justify-between rounded-lg border px-3 py-3 text-sm font-medium transition-all w-full shadow-sm"
+        style={{ backgroundColor: '#f9fafb', borderColor: '#d1d5db', color: '#1C1917', minHeight: '44px' }}
       >
-        <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+        <span>{value}</span>
+        {open ? <ChevronUp className="h-4 w-4" style={{ color: '#6b7280' }} /> : <ChevronDown className="h-4 w-4" style={{ color: '#6b7280' }} />}
+      </motion.button>
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            initial={{ opacity: 0, y: -8, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.95 }}
-            className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-lg border border-white/10 bg-zinc-900 shadow-2xl backdrop-blur-xl"
+            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            className="absolute top-full left-0 right-0 mt-1 rounded-lg border shadow-lg overflow-hidden z-50"
+            style={{ backgroundColor: '#ffffff', borderColor: '#e5e7eb' }}
           >
-            <div className="max-h-40 overflow-y-auto">
-              {options.map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => {
-                    onChange(opt);
-                    onToggle();
-                  }}
-                  className={`w-full px-3 py-2 text-left text-xs transition-colors ${
-                    value === opt
-                      ? 'bg-[#F97316] text-white'
-                      : 'text-gray-300 hover:bg-white/10'
-                  }`}
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
+            {options.map((opt) => (
+              <motion.button
+                key={opt}
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => {
+                  onChange(opt);
+                  onToggle();
+                }}
+                className="w-full px-3 py-3 text-left text-sm font-medium transition-colors border-b last:border-b-0"
+                style={{
+                  backgroundColor: value === opt ? '#fef3f2' : '#ffffff',
+                  color: value === opt ? '#F05A28' : '#1C1917',
+                  borderColor: '#f3f4f6',
+                  minHeight: '44px'
+                }}
+                onMouseEnter={(e) => {
+                  if (value !== opt) e.currentTarget.style.backgroundColor = '#f9fafb';
+                }}
+                onMouseLeave={(e) => {
+                  if (value !== opt) e.currentTarget.style.backgroundColor = '#ffffff';
+                }}
+              >
+                {opt}
+              </motion.button>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>
