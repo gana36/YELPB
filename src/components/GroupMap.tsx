@@ -31,6 +31,7 @@ interface GroupMapProps {
     users: UserLocation[];
     currentUserLocation?: { latitude: number; longitude: number };
     distanceRadius?: number; // in miles
+    mobileView?: boolean; // Mobile-optimized fullscreen mode
     onCenterCalculated?: (center: { lat: number; lng: number }) => void;
     onFairnessUpdate?: (data: {
         allWithinRadius: boolean;
@@ -94,6 +95,7 @@ export function GroupMap({
     users,
     currentUserLocation,
     distanceRadius = 2,
+    mobileView = false,
     onCenterCalculated,
     onFairnessUpdate
 }: GroupMapProps) {
@@ -182,6 +184,133 @@ export function GroupMap({
     // Convert miles to meters for circle radius
     const radiusInMeters = distanceRadius * 1609.34;
 
+    // Mobile view - full screen map
+    if (mobileView) {
+        return (
+            <div className="relative h-full w-full" style={{ paddingBottom: '80px' }}>
+                <MapContainer
+                    center={[groupCenter.lat, groupCenter.lng]}
+                    zoom={13}
+                    style={{ height: '100%', width: '100%' }}
+                    zoomControl={true}
+                    attributionControl={false}
+                >
+                    {/* Light theme map tiles for mobile */}
+                    <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+
+                    <RecenterMap center={[groupCenter.lat, groupCenter.lng]} />
+
+                    {/* Search radius circle */}
+                    <Circle
+                        center={[groupCenter.lat, groupCenter.lng]}
+                        radius={radiusInMeters}
+                        pathOptions={{
+                            color: fairnessData.allWithinRadius ? '#22c55e' : '#F05A28',
+                            fillColor: fairnessData.allWithinRadius ? '#22c55e' : '#F05A28',
+                            fillOpacity: 0.15,
+                            weight: 2,
+                            dashArray: '5, 10'
+                        }}
+                    />
+
+                    {/* Center point marker */}
+                    <Marker
+                        position={[groupCenter.lat, groupCenter.lng]}
+                        icon={L.divIcon({
+                            className: 'center-marker',
+                            html: `
+                                <div style="
+                                  width: 16px;
+                                  height: 16px;
+                                  background: ${fairnessData.allWithinRadius ? '#22c55e' : '#F05A28'};
+                                  border: 3px solid white;
+                                  border-radius: 50%;
+                                  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+                                "></div>
+                            `,
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8],
+                        })}
+                    />
+
+                    {/* User markers */}
+                    {usersWithDistance.map((user) => (
+                        <Marker
+                            key={user.id}
+                            position={[user.latitude, user.longitude]}
+                            icon={createUserIcon(user.color, user.isCurrentUser || false, !user.isWithinRadius)}
+                        />
+                    ))}
+                </MapContainer>
+
+                {/* Floating info card - top center */}
+                <motion.div
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none"
+                >
+                    <div className="rounded-xl border shadow-lg backdrop-blur-sm px-4 py-2.5"
+                        style={{
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            borderColor: '#e5e7eb'
+                        }}
+                    >
+                        <div className="flex items-center gap-3">
+                            {/* User count */}
+                            <div className="flex items-center gap-1.5">
+                                <Users className="h-4 w-4" style={{ color: '#6b7280' }} />
+                                <span className="text-sm font-semibold" style={{ color: '#1C1917' }}>
+                                    {usersWithDistance.length}
+                                </span>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="h-4 w-px" style={{ backgroundColor: '#d1d5db' }} />
+
+                            {/* Distance radius */}
+                            <div className="flex items-center gap-1.5">
+                                <div className="text-xs font-medium" style={{ color: '#6b7280' }}>
+                                    {distanceRadius} mi
+                                </div>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="h-4 w-px" style={{ backgroundColor: '#d1d5db' }} />
+
+                            {/* Fairness status */}
+                            {fairnessData.allWithinRadius ? (
+                                <div className="flex items-center gap-1">
+                                    <CheckCircle className="h-4 w-4 text-green-500" />
+                                    <span className="text-xs font-medium text-green-600">All reachable</span>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-1">
+                                    <AlertTriangle className="h-4 w-4" style={{ color: '#F05A28' }} />
+                                    <span className="text-xs font-medium" style={{ color: '#F05A28' }}>
+                                        {fairnessData.usersOutside.length} outside
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </motion.div>
+
+                {/* Animations */}
+                <style>{`
+                    @keyframes pulse {
+                      0%, 100% { transform: scale(1); opacity: 1; }
+                      50% { transform: scale(1.1); opacity: 0.8; }
+                    }
+                    @keyframes warning-pulse {
+                      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.4); }
+                      50% { box-shadow: 0 0 0 8px rgba(255, 107, 107, 0); }
+                    }
+                `}</style>
+            </div>
+        );
+    }
+
+    // Desktop view - collapsible card (original)
     return (
         <motion.div
             initial={{ opacity: 0, y: -20 }}

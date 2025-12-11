@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, Send, Sparkles, Copy, Check, Users, Zap, Bell, MapPin, Apple, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
+import { Lock, Send, Sparkles, Copy, Check, Users, Zap, Bell, MapPin, Apple, ChevronDown, ChevronUp, CheckCircle, X, MessageSquare } from 'lucide-react';
 import { MultimodalChat } from './MultimodalChat';
 import { GroupMap } from './GroupMap';
 import { sessionService, SessionUser, UserVote } from '../services/sessionService';
@@ -46,7 +46,12 @@ interface Activity {
   timestamp: Date;
 }
 
+type LobbyView = 'preferences' | 'map' | 'chat';
+
 export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
+  // View management
+  const [activeView, setActiveView] = useState<LobbyView>('preferences');
+
   const [budget, setBudget] = useState('');
   const [cuisine, setCuisine] = useState('');
   const [vibe, setVibe] = useState('');
@@ -367,7 +372,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
                   className="absolute top-full left-0 mt-2 rounded-xl border shadow-lg overflow-hidden"
-                  style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db', minWidth: '200px' }}
+                  style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db', minWidth: '200px', zIndex: 60 }}
                 >
                   <div className="px-3 py-2 border-b" style={{ backgroundColor: '#f9fafb', borderColor: '#e5e7eb' }}>
                     <span className="text-xs font-bold" style={{ color: '#6b7280' }}>ONLINE USERS</span>
@@ -432,528 +437,673 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
         </div>
       </motion.div>
 
-      {/* Activity Feed - Light Mode */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        className="relative z-10 flex-shrink-0 px-4 pt-3"
-      >
-        <div className="overflow-hidden rounded-xl border" style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db' }}>
-          <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: '#f3f4f6', backgroundColor: '#fef3f2' }}>
-            <div className="flex items-center gap-2">
-              <motion.div animate={{ rotate: showNewActivity ? [0, -10, 10, -10, 0] : 0 }}>
-                <Bell className="h-3 w-3" style={{ color: '#F05A28' }} />
-              </motion.div>
-              <h3 className="text-xs font-bold" style={{ color: '#1C1917' }}>
-                Activity Feed
-              </h3>
-            </div>
-            <div className="flex items-center gap-1 rounded-full px-2 py-0.5" style={{ backgroundColor: '#fed7aa' }}>
-              <div className="h-1 w-1 animate-pulse rounded-full" style={{ backgroundColor: '#f97316' }} />
-              <span className="text-xs font-medium" style={{ color: '#c2410c' }}>Live</span>
-            </div>
-          </div>
+      {/* View Content with Transitions */}
+      <AnimatePresence mode="wait">
+        {activeView === 'preferences' && (
+          <motion.div
+            key="preferences"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex flex-col flex-1 overflow-y-auto min-h-0 scrollbar-hide"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {/* Activity Feed - Light Mode */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              className="relative z-10 flex-shrink-0 px-4 pt-3"
+            >
+              <div className="overflow-hidden rounded-xl border" style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db' }}>
+                <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: '#f3f4f6', backgroundColor: '#fef3f2' }}>
+                  <div className="flex items-center gap-2">
+                    <motion.div animate={{ rotate: showNewActivity ? [0, -10, 10, -10, 0] : 0 }}>
+                      <Bell className="h-3 w-3" style={{ color: '#F05A28' }} />
+                    </motion.div>
+                    <h3 className="text-xs font-bold" style={{ color: '#1C1917' }}>
+                      Activity Feed
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-1 rounded-full px-2 py-0.5" style={{ backgroundColor: '#fed7aa' }}>
+                    <div className="h-1 w-1 animate-pulse rounded-full" style={{ backgroundColor: '#f97316' }} />
+                    <span className="text-xs font-medium" style={{ color: '#c2410c' }}>Live</span>
+                  </div>
+                </div>
 
-          <div className="max-h-24 overflow-y-auto p-2 space-y-1.5">
-            <AnimatePresence mode="popLayout">
-              {activities.slice(-3).reverse().map((activity) => (
-                <motion.div
-                  key={activity.id}
-                  initial={{ opacity: 0, x: -20, height: 0 }}
-                  animate={{ opacity: 1, x: 0, height: 'auto' }}
-                  exit={{ opacity: 0, x: 20, height: 0 }}
-                  className="flex items-center gap-2 rounded-lg p-2 transition-colors"
-                  style={{ backgroundColor: '#f9fafb' }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                <div className="max-h-24 overflow-y-auto p-2 space-y-1.5">
+                  <AnimatePresence mode="popLayout">
+                    {activities.slice(-3).reverse().map((activity) => (
+                      <motion.div
+                        key={activity.id}
+                        initial={{ opacity: 0, x: -20, height: 0 }}
+                        animate={{ opacity: 1, x: 0, height: 'auto' }}
+                        exit={{ opacity: 0, x: 20, height: 0 }}
+                        className="flex items-center gap-2 rounded-lg p-2 transition-colors"
+                        style={{ backgroundColor: '#f9fafb' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                      >
+                        <div className={`h-5 w-5 rounded-full bg-gradient-to-br ${activity.userColor} flex-shrink-0`} />
+                        <p className="flex-1 text-xs truncate min-w-0" style={{ color: '#6b7280' }}>
+                          <span className="font-semibold" style={{ color: '#1C1917' }}>{activity.user}</span> {activity.message}
+                        </p>
+                        <span className="text-sm flex-shrink-0">{getActivityIcon(activity.type)}</span>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Group Consensus Summary - Light Mode */}
+            {onlineUsers.length > 1 && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="relative z-10 px-4 pt-3"
+              >
+                <div className="overflow-hidden rounded-xl border" style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db' }}>
+                  <div className="px-3 py-2 border-b" style={{ backgroundColor: '#fff7ed', borderColor: '#fdba74' }}>
+                    <div className="flex items-center gap-2">
+                      <Users className="h-3.5 w-3.5" style={{ color: '#F05A28' }} />
+                      <h3 className="text-xs font-bold" style={{ color: '#1C1917' }}>
+                        GROUP CONSENSUS
+                      </h3>
+                    </div>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#ef4444' }} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#dc2626' }}>MUST-HAVES</p>
+                        <p className="text-xs" style={{ color: '#6b7280' }}>
+                          Budget max: {budget || '—'} • Distance: {distance} • Dietary: {dietary}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#eab308' }} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#ca8a04' }}>PREFERENCES</p>
+                        <p className="text-xs" style={{ color: '#6b7280' }}>
+                          Cuisine: {cuisine || '—'} • Vibe: {vibe || '—'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Preferences Content - No nested scroll */}
+            <div className="px-4 py-3 pb-32">
+              <div className="space-y-3">
+                {/* Budget */}
+                <CompactPreference
+                  label="BUDGET"
+                  icon=""
+                  value={budget}
+                  locked={locked}
                 >
-                  <div className={`h-5 w-5 rounded-full bg-gradient-to-br ${activity.userColor} flex-shrink-0`} />
-                  <p className="flex-1 text-xs truncate min-w-0" style={{ color: '#6b7280' }}>
-                    <span className="font-semibold" style={{ color: '#1C1917' }}>{activity.user}</span> {activity.message}
-                  </p>
-                  <span className="text-sm flex-shrink-0">{getActivityIcon(activity.type)}</span>
+                  {!locked && (
+                    <div className="flex gap-1.5">
+                      {budgetOptions.map(opt => {
+                        const voteCount = getVoteCount('budget', opt);
+                        const voters = getVoters('budget', opt);
+                        return (
+                          <motion.button
+                            key={opt}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => {
+                              setBudget(opt);
+                              updateVote('budget', opt);
+                              addActivity(`voted for ${opt} budget`);
+                            }}
+                            className={`relative flex-1 rounded-lg px-2.5 py-2.5 text-[13px] font-bold transition-all border ${budget === opt
+                              ? 'border-orange-500'
+                              : 'border-gray-300'
+                              }`}
+                            style={{
+                              backgroundColor: budget === opt ? '#f97316' : '#ffffff',
+                              color: budget === opt ? '#ffffff' : '#374151',
+                              minHeight: '44px'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (budget !== opt) {
+                                e.currentTarget.style.backgroundColor = '#f9fafb';
+                                e.currentTarget.style.borderColor = '#9ca3af';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (budget !== opt) {
+                                e.currentTarget.style.backgroundColor = '#ffffff';
+                                e.currentTarget.style.borderColor = '#d1d5db';
+                              }
+                            }}
+                          >
+                            {opt}
+                            {voteCount > 0 && (
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-white"
+                                style={{ backgroundColor: '#f97316' }}
+                              >
+                                {voteCount}
+                              </motion.div>
+                            )}
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CompactPreference>
+
+                {/* Cuisine */}
+                <CompactPreference label="CUISINE" icon="" value={cuisine} locked={locked}>
+                  {!locked && (
+                    <div className="w-full -mr-3">
+                      <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                        {cuisineOptions.map(opt => {
+                          const voteCount = getVoteCount('cuisine', opt);
+                          return (
+                            <motion.button
+                              key={opt}
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => {
+                                setCuisine(opt);
+                                updateVote('cuisine', opt);
+                                addActivity(`prefers ${opt} cuisine`);
+                              }}
+                              className={`relative flex-shrink-0 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap border ${cuisine === opt
+                                ? 'shadow-lg border-orange-500'
+                                : 'border-gray-300'
+                                }`}
+                              style={{
+                                backgroundColor: cuisine === opt ? '#f97316' : '#ffffff',
+                                color: cuisine === opt ? '#ffffff' : '#374151'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (cuisine !== opt) {
+                                  e.currentTarget.style.backgroundColor = '#f9fafb';
+                                  e.currentTarget.style.borderColor = '#9ca3af';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (cuisine !== opt) {
+                                  e.currentTarget.style.backgroundColor = '#ffffff';
+                                  e.currentTarget.style.borderColor = '#d1d5db';
+                                }
+                              }}
+                            >
+                              {opt}
+                              {voteCount > 0 && (
+                                <motion.div
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
+                                >
+                                  {voteCount}
+                                </motion.div>
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </CompactPreference>
+
+                {/* Vibe */}
+                <CompactPreference label="VIBE" icon="" value={vibe} locked={locked}>
+                  {!locked && (
+                    <div className="w-full -mr-3">
+                      <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                        {vibeOptions.map(opt => {
+                          const voteCount = getVoteCount('vibe', opt);
+                          return (
+                            <motion.button
+                              key={opt}
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => {
+                                setVibe(opt);
+                                updateVote('vibe', opt);
+                                addActivity(`wants ${opt} vibe`);
+                              }}
+                              className={`relative flex-shrink-0 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap border ${vibe === opt
+                                ? 'shadow-lg border-orange-500'
+                                : 'border-gray-300'
+                                }`}
+                              style={{
+                                backgroundColor: vibe === opt ? '#f97316' : '#ffffff',
+                                color: vibe === opt ? '#ffffff' : '#374151'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (vibe !== opt) {
+                                  e.currentTarget.style.backgroundColor = '#f9fafb';
+                                  e.currentTarget.style.borderColor = '#9ca3af';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (vibe !== opt) {
+                                  e.currentTarget.style.backgroundColor = '#ffffff';
+                                  e.currentTarget.style.borderColor = '#d1d5db';
+                                }
+                              }}
+                            >
+                              {opt}
+                              {voteCount > 0 && (
+                                <motion.div
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
+                                >
+                                  {voteCount}
+                                </motion.div>
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </CompactPreference>
+
+                {/* Distance */}
+                <CompactPreference label="DISTANCE" icon="" value={distance} locked={locked}>
+                  {!locked && (
+                    <div className="flex gap-1.5">
+                      {distanceOptions.map(opt => {
+                        const voteCount = getVoteCount('distance', opt);
+                        return (
+                          <motion.button
+                            key={opt}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => {
+                              setDistance(opt);
+                              updateVote('distance', opt);
+                              addActivity(`set distance to ${opt}`);
+                            }}
+                            className={`relative flex-1 rounded-lg px-2 py-2.5 text-xs font-bold transition-all border ${distance === opt
+                              ? 'shadow-lg border-orange-500'
+                              : 'border-gray-300'
+                              }`}
+                            style={{
+                              backgroundColor: distance === opt ? '#f97316' : '#ffffff',
+                              color: distance === opt ? '#ffffff' : '#374151'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (distance !== opt) {
+                                e.currentTarget.style.backgroundColor = '#f9fafb';
+                                e.currentTarget.style.borderColor = '#9ca3af';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (distance !== opt) {
+                                e.currentTarget.style.backgroundColor = '#ffffff';
+                                e.currentTarget.style.borderColor = '#d1d5db';
+                              }
+                            }}
+                          >
+                            {opt}
+                            {voteCount > 0 && (
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
+                              >
+                                {voteCount}
+                              </motion.div>
+                            )}
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CompactPreference>
+
+                {/* Dietary */}
+                <CompactPreference label="DIETARY" icon="" value={dietary} locked={locked}>
+                  {!locked && (
+                    <div className="w-full -mr-3">
+                      <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                        {dietaryOptions.map(opt => {
+                          const voteCount = getVoteCount('dietary', opt);
+                          return (
+                            <motion.button
+                              key={opt}
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => {
+                                setDietary(opt);
+                                updateVote('dietary', opt);
+                                addActivity(`set dietary to ${opt}`);
+                              }}
+                              className={`relative flex-shrink-0 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap border ${dietary === opt
+                                ? 'shadow-lg border-orange-500'
+                                : 'border-gray-300'
+                                }`}
+                              style={{
+                                backgroundColor: dietary === opt ? '#f97316' : '#ffffff',
+                                color: dietary === opt ? '#ffffff' : '#374151'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (dietary !== opt) {
+                                  e.currentTarget.style.backgroundColor = '#f9fafb';
+                                  e.currentTarget.style.borderColor = '#9ca3af';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (dietary !== opt) {
+                                  e.currentTarget.style.backgroundColor = '#ffffff';
+                                  e.currentTarget.style.borderColor = '#d1d5db';
+                                }
+                              }}
+                            >
+                              {opt}
+                              {voteCount > 0 && (
+                                <motion.div
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
+                                >
+                                  {voteCount}
+                                </motion.div>
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </CompactPreference>
+
+                {/* Date & Time */}
+                <motion.div
+                  whileHover={!locked ? { scale: 1.005 } : {}}
+                  className="rounded-xl p-3 transition-all relative overflow-visible border"
+                  style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db' }}
+                >
+                  <div className="mb-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] tracking-widest font-extrabold uppercase" style={{ color: '#9ca3af' }}>DATE & TIME</span>
+                    </div>
+                    {locked && (
+                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }}>
+                        <Lock className="h-3 w-3" style={{ color: '#F05A28' }} />
+                      </motion.div>
+                    )}
+                  </div>
+                  {!locked ? (
+                    <div className="flex gap-1.5">
+                      <input
+                        type="date"
+                        value={bookingDate}
+                        onChange={(e) => {
+                          setBookingDate(e.target.value);
+                          addActivity(`set date to ${e.target.value}`);
+                        }}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="flex-1 rounded-lg border px-2.5 py-2.5 text-sm font-medium focus:outline-none transition-all"
+                        style={{ backgroundColor: '#f9fafb', borderColor: '#d1d5db', color: '#1C1917', minHeight: '44px' }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = '#f97316';
+                          e.currentTarget.style.backgroundColor = '#ffffff';
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = '#d1d5db';
+                          e.currentTarget.style.backgroundColor = '#f9fafb';
+                        }}
+                      />
+                      <input
+                        type="time"
+                        value={bookingTime}
+                        onChange={(e) => {
+                          setBookingTime(e.target.value);
+                          addActivity(`set time to ${e.target.value}`);
+                        }}
+                        className="w-24 rounded-lg border px-2.5 py-2.5 text-sm font-medium focus:outline-none transition-all"
+                        style={{ backgroundColor: '#f9fafb', borderColor: '#d1d5db', color: '#1C1917', minHeight: '44px' }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = '#f97316';
+                          e.currentTarget.style.backgroundColor = '#ffffff';
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = '#d1d5db';
+                          e.currentTarget.style.backgroundColor = '#f9fafb';
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <motion.div
+                        key={`${bookingDate} - ${bookingTime}`}
+                        initial={{ y: -8, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        className="flex-1 rounded-lg px-2.5 py-2 text-center transition-all"
+                        style={{ backgroundColor: '#ffedd5', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <span className="text-sm font-bold" style={{ color: '#F05A28' }}>
+                          {new Date(bookingDate).toLocaleDateString()} at {bookingTime}
+                        </span>
+                      </motion.div>
+                    </div>
+                  )}
                 </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+
+                {/* Action Button - iPhone 15 Pro Optimized */}
+                {!locked ? (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setLocked(true)}
+                    className="relative w-full overflow-hidden rounded-lg py-3.5 font-bold text-white border border-orange-500"
+                    style={{ backgroundColor: '#f97316', minHeight: '52px', fontSize: '15px' }}
+                  >
+                    <div className="relative flex items-center justify-center gap-2">
+                      <Lock className="h-4 w-4" />
+                      <span>
+                        Lock Preferences
+                      </span>
+                    </div>
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onNavigate({ cuisine, budget, vibe, dietary, distance, bookingDate, bookingTime, partySize })}
+                    className="relative w-full overflow-hidden rounded-lg py-3.5 font-bold text-white border border-orange-600"
+                    style={{ backgroundColor: '#f97316', minHeight: '52px', fontSize: '15px' }}
+                  >
+                    <div className="relative flex items-center justify-center gap-2">
+                      <Zap className="h-4 w-4" fill="currentColor" />
+                      <span>
+                        Start Swiping
+                      </span>
+                    </div>
+                  </motion.button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {activeView === 'map' && (
+          <motion.div
+            key="map"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex-1 overflow-hidden h-[calc(100%-80px)]"
+          >
+            <GroupMap
+              users={mapUsers}
+              currentUserLocation={userLocation ? {
+                latitude: userLocation.latitude,
+                longitude: userLocation.longitude
+              } : undefined}
+              distanceRadius={distanceToMiles(distance)}
+              mobileView={true}
+            />
+          </motion.div>
+        )}
+
+        {activeView === 'chat' && (
+          <motion.div
+            key="chat"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex-1 overflow-hidden"
+          >
+            <div className="h-full">
+              <MultimodalChat
+                preferences={{
+                  cuisine,
+                  budget,
+                  vibe,
+                  distance,
+                  dietary
+                }}
+                activities={activities}
+                onlineUsers={onlineUsers}
+                userVotes={userVotes}
+                sessionCode={sessionCode}
+                minimized={false}
+                onToggleMinimized={() => { }} // No-op since we're in full screen mode
+                onPreferencesDetected={(prefs) => {
+                  // Auto-populate preferences from AI analysis
+                  if (prefs.cuisine) {
+                    setCuisine(prefs.cuisine);
+                    updateVote('cuisine', prefs.cuisine);
+                    addActivity(`AI suggested ${prefs.cuisine} cuisine`);
+                  }
+                  if (prefs.budget) {
+                    setBudget(prefs.budget);
+                    updateVote('budget', prefs.budget);
+                    addActivity(`AI suggested ${prefs.budget} budget`);
+                  }
+                  if (prefs.vibe) {
+                    setVibe(prefs.vibe);
+                    updateVote('vibe', prefs.vibe);
+                    addActivity(`AI suggested ${prefs.vibe} vibe`);
+                  }
+                  if (prefs.dietary) {
+                    setDietary(prefs.dietary);
+                    updateVote('dietary', prefs.dietary);
+                    addActivity(`AI suggested ${prefs.dietary} dietary preference`);
+                  }
+                }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fixed Bottom Navigation Bar - Sleek Mobile Design */}
+      <motion.div
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="fixed bottom-0 left-0 right-0 z-50"
+        style={{
+          backgroundColor: '#ffffff',
+          borderTop: '1px solid #e5e7eb',
+          boxShadow: '0 -4px 16px rgba(0, 0, 0, 0.12)'
+        }}
+      >
+        <div className="flex items-center justify-around max-w-md mx-auto px-2 py-2">
+          {/* Preferences Button */}
+          <motion.button
+            whileTap={{ scale: 0.92 }}
+            onClick={() => setActiveView('preferences')}
+            className="flex flex-col items-center justify-center gap-1 rounded-lg px-3 py-2 flex-1 transition-all relative"
+            style={{
+              backgroundColor: 'transparent',
+            }}
+          >
+            <Lock className="h-5 w-5" style={{ color: activeView === 'preferences' ? '#F05A28' : '#9ca3af' }} />
+            <span className="text-[9px] font-semibold" style={{ color: activeView === 'preferences' ? '#F05A28' : '#9ca3af' }}>Preferences</span>
+            {activeView === 'preferences' && (
+              <motion.div
+                layoutId="activeIndicator"
+                className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 rounded-full"
+                style={{
+                  width: '40%',
+                  backgroundColor: '#F05A28'
+                }}
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              />
+            )}
+          </motion.button>
+
+          {/* Map Button */}
+          <motion.button
+            whileTap={{ scale: 0.92 }}
+            onClick={() => setActiveView('map')}
+            className="flex flex-col items-center justify-center gap-1 rounded-lg px-3 py-2 flex-1 transition-all relative"
+            style={{
+              backgroundColor: 'transparent',
+            }}
+          >
+            <MapPin className="h-5 w-5" style={{ color: activeView === 'map' ? '#F05A28' : '#9ca3af' }} />
+            <span className="text-[9px] font-semibold" style={{ color: activeView === 'map' ? '#F05A28' : '#9ca3af' }}>Map</span>
+            {activeView === 'map' && (
+              <motion.div
+                layoutId="activeIndicator"
+                className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 rounded-full"
+                style={{
+                  width: '40%',
+                  backgroundColor: '#F05A28'
+                }}
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              />
+            )}
+          </motion.button>
+
+          {/* Assistant Button */}
+          <motion.button
+            whileTap={{ scale: 0.92 }}
+            onClick={() => setActiveView('chat')}
+            className="flex flex-col items-center justify-center gap-1 rounded-lg px-3 py-2 flex-1 transition-all relative"
+            style={{
+              backgroundColor: 'transparent',
+            }}
+          >
+            <MessageSquare className="h-5 w-5" style={{ color: activeView === 'chat' ? '#F05A28' : '#9ca3af' }} />
+            <span className="text-[9px] font-semibold" style={{ color: activeView === 'chat' ? '#F05A28' : '#9ca3af' }}>Assistant</span>
+            {activeView === 'chat' && (
+              <motion.div
+                layoutId="activeIndicator"
+                className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 rounded-full"
+                style={{
+                  width: '40%',
+                  backgroundColor: '#F05A28'
+                }}
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              />
+            )}
+          </motion.button>
         </div>
       </motion.div>
 
-      {/* Group Consensus Summary - Light Mode */}
-      {onlineUsers.length > 1 && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="relative z-10 px-4 pt-3"
-        >
-          <div className="overflow-hidden rounded-xl border" style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db' }}>
-            <div className="px-3 py-2 border-b" style={{ backgroundColor: '#fff7ed', borderColor: '#fdba74' }}>
-              <div className="flex items-center gap-2">
-                <Users className="h-3.5 w-3.5" style={{ color: '#F05A28' }} />
-                <h3 className="text-xs font-bold" style={{ color: '#1C1917' }}>
-                  GROUP CONSENSUS
-                </h3>
-              </div>
-            </div>
-            <div className="p-3 space-y-2">
-              <div className="flex items-start gap-2">
-                <div className="flex-shrink-0 mt-0.5">
-                  <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#ef4444' }} />
-                </div>
-                <div className="flex-1">
-                  <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#dc2626' }}>MUST-HAVES</p>
-                  <p className="text-xs" style={{ color: '#6b7280' }}>
-                    Budget max: {budget || '—'} • Distance: {distance} • Dietary: {dietary}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <div className="flex-shrink-0 mt-0.5">
-                  <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#eab308' }} />
-                </div>
-                <div className="flex-1">
-                  <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#ca8a04' }}>PREFERENCES</p>
-                  <p className="text-xs" style={{ color: '#6b7280' }}>
-                    Cuisine: {cuisine || '—'} • Vibe: {vibe || '—'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Scrollable Preferences Section - iPhone 15 Pro */}
-      <div className="relative z-10 flex-1 overflow-y-auto px-4 py-3">
-        <div className="space-y-3 pb-6">
-          {/* Budget */}
-          <CompactPreference
-            label="BUDGET"
-            icon=""
-            value={budget}
-            locked={locked}
-          >
-            {!locked && (
-              <div className="flex gap-1.5">
-                {budgetOptions.map(opt => {
-                  const voteCount = getVoteCount('budget', opt);
-                  const voters = getVoters('budget', opt);
-                  return (
-                    <motion.button
-                      key={opt}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => {
-                        setBudget(opt);
-                        updateVote('budget', opt);
-                        addActivity(`voted for ${opt} budget`);
-                      }}
-                      className={`relative flex-1 rounded-lg px-2.5 py-2.5 text-[13px] font-bold transition-all border ${budget === opt
-                        ? 'border-orange-500'
-                        : 'border-gray-300'
-                        }`}
-                      style={{
-                        backgroundColor: budget === opt ? '#f97316' : '#ffffff',
-                        color: budget === opt ? '#ffffff' : '#374151',
-                        minHeight: '44px'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (budget !== opt) {
-                          e.currentTarget.style.backgroundColor = '#f9fafb';
-                          e.currentTarget.style.borderColor = '#9ca3af';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (budget !== opt) {
-                          e.currentTarget.style.backgroundColor = '#ffffff';
-                          e.currentTarget.style.borderColor = '#d1d5db';
-                        }
-                      }}
-                    >
-                      {opt}
-                      {voteCount > 0 && (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-white"
-                          style={{ backgroundColor: '#f97316' }}
-                        >
-                          {voteCount}
-                        </motion.div>
-                      )}
-                    </motion.button>
-                  );
-                })}
-              </div>
-            )}
-          </CompactPreference>
-
-          {/* Cuisine */}
-          <CompactPreference label="CUISINE" icon="" value={cuisine} locked={locked}>
-            {!locked && (
-              <div className="w-full -mr-3">
-                <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  {cuisineOptions.map(opt => {
-                    const voteCount = getVoteCount('cuisine', opt);
-                    return (
-                      <motion.button
-                        key={opt}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => {
-                          setCuisine(opt);
-                          updateVote('cuisine', opt);
-                          addActivity(`prefers ${opt} cuisine`);
-                        }}
-                        className={`relative flex-shrink-0 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap border ${cuisine === opt
-                          ? 'shadow-lg border-orange-500'
-                          : 'border-gray-300'
-                          }`}
-                        style={{
-                          backgroundColor: cuisine === opt ? '#f97316' : '#ffffff',
-                          color: cuisine === opt ? '#ffffff' : '#374151'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (cuisine !== opt) {
-                            e.currentTarget.style.backgroundColor = '#f9fafb';
-                            e.currentTarget.style.borderColor = '#9ca3af';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (cuisine !== opt) {
-                            e.currentTarget.style.backgroundColor = '#ffffff';
-                            e.currentTarget.style.borderColor = '#d1d5db';
-                          }
-                        }}
-                      >
-                        {opt}
-                        {voteCount > 0 && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
-                          >
-                            {voteCount}
-                          </motion.div>
-                        )}
-                      </motion.button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </CompactPreference>
-
-          {/* Vibe */}
-          <CompactPreference label="VIBE" icon="" value={vibe} locked={locked}>
-            {!locked && (
-              <div className="w-full -mr-3">
-                <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  {vibeOptions.map(opt => {
-                    const voteCount = getVoteCount('vibe', opt);
-                    return (
-                      <motion.button
-                        key={opt}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => {
-                          setVibe(opt);
-                          updateVote('vibe', opt);
-                          addActivity(`wants ${opt} vibe`);
-                        }}
-                        className={`relative flex-shrink-0 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap border ${vibe === opt
-                          ? 'shadow-lg border-orange-500'
-                          : 'border-gray-300'
-                          }`}
-                        style={{
-                          backgroundColor: vibe === opt ? '#f97316' : '#ffffff',
-                          color: vibe === opt ? '#ffffff' : '#374151'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (vibe !== opt) {
-                            e.currentTarget.style.backgroundColor = '#f9fafb';
-                            e.currentTarget.style.borderColor = '#9ca3af';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (vibe !== opt) {
-                            e.currentTarget.style.backgroundColor = '#ffffff';
-                            e.currentTarget.style.borderColor = '#d1d5db';
-                          }
-                        }}
-                      >
-                        {opt}
-                        {voteCount > 0 && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
-                          >
-                            {voteCount}
-                          </motion.div>
-                        )}
-                      </motion.button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </CompactPreference>
-
-          {/* Distance */}
-          <CompactPreference label="DISTANCE" icon="" value={distance} locked={locked}>
-            {!locked && (
-              <div className="flex gap-1.5">
-                {distanceOptions.map(opt => {
-                  const voteCount = getVoteCount('distance', opt);
-                  return (
-                    <motion.button
-                      key={opt}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => {
-                        setDistance(opt);
-                        updateVote('distance', opt);
-                        addActivity(`set distance to ${opt}`);
-                      }}
-                      className={`relative flex-1 rounded-lg px-2 py-2.5 text-xs font-bold transition-all border ${distance === opt
-                        ? 'shadow-lg border-orange-500'
-                        : 'border-gray-300'
-                        }`}
-                      style={{
-                        backgroundColor: distance === opt ? '#f97316' : '#ffffff',
-                        color: distance === opt ? '#ffffff' : '#374151'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (distance !== opt) {
-                          e.currentTarget.style.backgroundColor = '#f9fafb';
-                          e.currentTarget.style.borderColor = '#9ca3af';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (distance !== opt) {
-                          e.currentTarget.style.backgroundColor = '#ffffff';
-                          e.currentTarget.style.borderColor = '#d1d5db';
-                        }
-                      }}
-                    >
-                      {opt}
-                      {voteCount > 0 && (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
-                        >
-                          {voteCount}
-                        </motion.div>
-                      )}
-                    </motion.button>
-                  );
-                })}
-              </div>
-            )}
-          </CompactPreference>
-
-          {/* Dietary */}
-          <CompactPreference label="DIETARY" icon="" value={dietary} locked={locked}>
-            {!locked && (
-              <div className="w-full -mr-3">
-                <div className="flex gap-1.5 overflow-x-auto pb-1 pr-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  {dietaryOptions.map(opt => {
-                    const voteCount = getVoteCount('dietary', opt);
-                    return (
-                      <motion.button
-                        key={opt}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => {
-                          setDietary(opt);
-                          updateVote('dietary', opt);
-                          addActivity(`set dietary to ${opt}`);
-                        }}
-                        className={`relative flex-shrink-0 rounded-lg px-2.5 py-2.5 text-xs font-bold transition-all whitespace-nowrap border ${dietary === opt
-                          ? 'shadow-lg border-orange-500'
-                          : 'border-gray-300'
-                          }`}
-                        style={{
-                          backgroundColor: dietary === opt ? '#f97316' : '#ffffff',
-                          color: dietary === opt ? '#ffffff' : '#374151'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (dietary !== opt) {
-                            e.currentTarget.style.backgroundColor = '#f9fafb';
-                            e.currentTarget.style.borderColor = '#9ca3af';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (dietary !== opt) {
-                            e.currentTarget.style.backgroundColor = '#ffffff';
-                            e.currentTarget.style.borderColor = '#d1d5db';
-                          }
-                        }}
-                      >
-                        {opt}
-                        {voteCount > 0 && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-white"
-                          >
-                            {voteCount}
-                          </motion.div>
-                        )}
-                      </motion.button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </CompactPreference>
-
-          {/* Date & Time */}
-          <motion.div
-            whileHover={!locked ? { scale: 1.005 } : {}}
-            className="rounded-xl p-3 transition-all relative overflow-visible border"
-            style={{ backgroundColor: '#ffffff', borderColor: '#d1d5db' }}
-          >
-            <div className="mb-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] tracking-widest font-extrabold uppercase" style={{ color: '#9ca3af' }}>DATE & TIME</span>
-              </div>
-              {locked && (
-                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', bounce: 0.5 }}>
-                  <Lock className="h-3 w-3" style={{ color: '#F05A28' }} />
-                </motion.div>
-              )}
-            </div>
-            {!locked ? (
-              <div className="flex gap-1.5">
-                <input
-                  type="date"
-                  value={bookingDate}
-                  onChange={(e) => {
-                    setBookingDate(e.target.value);
-                    addActivity(`set date to ${e.target.value}`);
-                  }}
-                  min={new Date().toISOString().split('T')[0]}
-                  className="flex-1 rounded-lg border px-2.5 py-2.5 text-sm font-medium focus:outline-none transition-all"
-                  style={{ backgroundColor: '#f9fafb', borderColor: '#d1d5db', color: '#1C1917', minHeight: '44px' }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#f97316';
-                    e.currentTarget.style.backgroundColor = '#ffffff';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.backgroundColor = '#f9fafb';
-                  }}
-                />
-                <input
-                  type="time"
-                  value={bookingTime}
-                  onChange={(e) => {
-                    setBookingTime(e.target.value);
-                    addActivity(`set time to ${e.target.value}`);
-                  }}
-                  className="w-24 rounded-lg border px-2.5 py-2.5 text-sm font-medium focus:outline-none transition-all"
-                  style={{ backgroundColor: '#f9fafb', borderColor: '#d1d5db', color: '#1C1917', minHeight: '44px' }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#f97316';
-                    e.currentTarget.style.backgroundColor = '#ffffff';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.backgroundColor = '#f9fafb';
-                  }}
-                />
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <motion.div
-                  key={`${bookingDate} - ${bookingTime}`}
-                  initial={{ y: -8, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  className="flex-1 rounded-lg px-2.5 py-2 text-center transition-all"
-                  style={{ backgroundColor: '#ffedd5', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <span className="text-sm font-bold" style={{ color: '#F05A28' }}>
-                    {new Date(bookingDate).toLocaleDateString()} at {bookingTime}
-                  </span>
-                </motion.div>
-              </div>
-            )}
-          </motion.div>
-
-          {/* Action Button - iPhone 15 Pro Optimized */}
-          {!locked ? (
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setLocked(true)}
-              className="relative w-full overflow-hidden rounded-lg py-3.5 font-bold text-white border border-orange-500"
-              style={{ backgroundColor: '#f97316', minHeight: '52px', fontSize: '15px' }}
-            >
-              <div className="relative flex items-center justify-center gap-2">
-                <Lock className="h-4 w-4" />
-                <span>
-                  Lock Preferences
-                </span>
-              </div>
-            </motion.button>
-          ) : (
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => onNavigate({ cuisine, budget, vibe, dietary, distance, bookingDate, bookingTime, partySize })}
-              className="relative w-full overflow-hidden rounded-lg py-3.5 font-bold text-white border border-orange-600"
-              style={{ backgroundColor: '#f97316', minHeight: '52px', fontSize: '15px' }}
-            >
-              <div className="relative flex items-center justify-center gap-2">
-                <Zap className="h-4 w-4" fill="currentColor" />
-                <span>
-                  Start Swiping
-                </span>
-              </div>
-            </motion.button>
-          )}
-        </div>
-      </div>
-
-      {/* Fixed AI Assistant at Bottom - Now with Multimodal Support */}
-      <MultimodalChat
-        preferences={{
-          cuisine,
-          budget,
-          vibe,
-          distance,
-          dietary
-        }}
-        activities={activities}
-        onlineUsers={onlineUsers}
-        userVotes={userVotes}
-        sessionCode={sessionCode}
-        minimized={chatMinimized}
-        onToggleMinimized={() => setChatMinimized(!chatMinimized)}
-        onPreferencesDetected={(prefs) => {
-          // Auto-populate preferences from AI analysis
-          if (prefs.cuisine) {
-            setCuisine(prefs.cuisine);
-            addActivity(`AI suggested ${prefs.cuisine} cuisine`);
-          }
-          if (prefs.budget) {
-            setBudget(prefs.budget);
-            addActivity(`AI suggested ${prefs.budget} budget`);
-          }
-          if (prefs.vibe) {
-            setVibe(prefs.vibe);
-            addActivity(`AI suggested ${prefs.vibe} vibe`);
-          }
-          if (prefs.dietary) {
-            setDietary(prefs.dietary);
-            addActivity(`AI suggested ${prefs.dietary} dietary preference`);
-          }
-        }}
-      />
+      {/* Hide scrollbar CSS */}
+      <style>{`
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
     </div>
   );
 }
