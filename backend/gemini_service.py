@@ -434,6 +434,231 @@ Respond as a helpful group facilitator (be warm, brief, and decisive):"""
             logger.error(f"Error in chat: {str(e)}")
             raise Exception(f"Failed to generate chat response: {str(e)}")
 
+    async def text_to_speech(self, text: str, voice_name: str = "Kore") -> bytes:
+        """
+        Convert text to speech using Gemini TTS.
+        
+        Args:
+            text: Text to convert to speech
+            voice_name: Voice to use (Kore, Puck, Charon, Fenrir, Aoede, etc.)
+        
+        Returns:
+            Audio bytes in WAV format
+        """
+        try:
+            logger.info(f"Converting text to speech: {text[:50]}...")
+            
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash-preview-tts",
+                contents=text,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=voice_name
+                            )
+                        )
+                    )
+                )
+            )
+            
+            # Extract audio data from response
+            audio_data = response.candidates[0].content.parts[0].inline_data.data
+            logger.info(f"Successfully generated audio: {len(audio_data)} bytes")
+            return audio_data
+            
+        except Exception as e:
+            logger.error(f"Error in text_to_speech: {str(e)}")
+            raise Exception(f"Failed to generate speech: {str(e)}")
+
+    async def analyze_food_image(
+        self,
+        image_data: bytes,
+        mime_type: str = "image/jpeg"
+    ) -> Dict[str, Any]:
+        """
+        Analyze a food or restaurant image to detect preferences.
+        
+        Args:
+            image_data: Raw image bytes
+            mime_type: MIME type of image (image/jpeg, image/png, etc.)
+        
+        Returns:
+            Dictionary with detected cuisine, vibe, price_range, and any restaurant info
+        """
+        try:
+            logger.info(f"Analyzing food/restaurant image ({len(image_data)} bytes)")
+            
+            prompt = """Analyze this food or restaurant image and extract the following information.
+
+If this is a FOOD image:
+- Identify the cuisine type (e.g., Japanese, Italian, Mexican, American, etc.)
+- Identify specific dishes if visible
+- Estimate the price range based on presentation ($ = budget, $$ = moderate, $$$ = upscale, $$$$ = fine dining)
+- Describe the vibe/ambiance if visible (casual, fancy, romantic, family-friendly, trendy, etc.)
+
+If this is a RESTAURANT image (exterior, sign, menu, interior):
+- Try to identify the restaurant name from any visible signage or text
+- Describe the ambiance/vibe (casual, upscale, outdoor seating, etc.)
+- Estimate the price range based on appearance
+- Identify the cuisine type if apparent
+
+Return your analysis as JSON with these fields:
+{
+  "image_type": "food" or "restaurant",
+  "cuisine_types": ["list", "of", "cuisines"],
+  "dishes_detected": ["list of specific dishes if food image"],
+  "restaurant_name": "name if visible, null otherwise",
+  "price_range": "$" or "$$" or "$$$" or "$$$$",
+  "vibe": ["list", "of", "vibe", "keywords"],
+  "description": "Brief description of what you see",
+  "confidence": 0.0 to 1.0,
+  "search_terms": ["suggested", "yelp", "search", "terms"]
+}
+
+Return ONLY valid JSON, no other text."""
+
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=[
+                    types.Part.from_bytes(data=image_data, mime_type=mime_type),
+                    prompt
+                ]
+            )
+            
+            response_text = response.text.strip()
+            logger.info(f"Image analysis response: {response_text[:200]}...")
+            
+            # Try to parse as JSON
+            import json
+            try:
+                # Clean up response if needed
+                if response_text.startswith("```json"):
+                    response_text = response_text[7:]
+                if response_text.startswith("```"):
+                    response_text = response_text[3:]
+                if response_text.endswith("```"):
+                    response_text = response_text[:-3]
+                
+                result = json.loads(response_text.strip())
+                logger.info(f"Parsed image analysis: {result}")
+                return {
+                    "success": True,
+                    **result
+                }
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse image analysis as JSON: {e}")
+                return {
+                    "success": True,
+                    "image_type": "unknown",
+                    "cuisine_types": [],
+                    "dishes_detected": [],
+                    "restaurant_name": None,
+                    "price_range": "$$",
+                    "vibe": [],
+                    "description": response_text,
+                    "confidence": 0.5,
+                    "search_terms": [],
+                    "raw_response": response_text
+                }
+                
+        except Exception as e:
+            logger.error(f"Error analyzing food image: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+
+
+    async def resolve_tie(
+        self,
+        restaurants: List[Dict[str, Any]],
+        preferences: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Resolve a tie between multiple restaurants using AI analysis
+        
+        Args:
+            restaurants: List of tied restaurant objects
+            preferences: Group preferences (cuisine, vibe, etc.)
+            
+        Returns:
+            Dictionary with winner_id and reason
+        """
+        try:
+            logger.info(f"Resolving tie between {len(restaurants)} restaurants")
+            
+            # Format restaurants for the prompt
+            candidates = []
+            for r in restaurants:
+                candidates.append(f"- ID: {r.get('id')}, Name: {r.get('name')}, "
+                                  f"Cuisine: {r.get('cuisine')}, Rating: {r.get('rating')}, "
+                                  f"Price: {r.get('price')}, Vibe: {r.get('vibe', 'Unknown')}")
+            
+            candidates_text = "\n".join(candidates)
+            
+            prompt = f"""
+            Help resolve a tie between these restaurants for a group dinner.
+            
+            Group Preferences:
+            - Cuisine: {preferences.get('cuisine', 'Any')}
+            - Budget: {preferences.get('budget', 'Any')}
+            - Vibe: {preferences.get('vibe', 'Any')}
+            - Dietary: {preferences.get('dietary', 'None')}
+            
+            Candidates (Tied for most votes):
+            {candidates_text}
+            
+            Task:
+            1. Analyze which restaurant best fits the group preferences.
+            2. If equal fit, pick the one with better rating/value.
+            3. Select ONE winner.
+            4. Provide a fun, short reason (1 sentence) for the choice.
+            
+            Return JSON only:
+            {{
+                "winner_id": "id_of_winner",
+                "reason": "Fun reason why this was chosen (e.g., 'It has the best matched vibe!')"
+            }}
+            """
+            
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=[prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            
+            result = response.text.strip()
+            logger.info(f"Tie resolution result: {result}")
+            
+            import json
+            # Handle potential markdown fencing in AI response
+            if result.startswith("```json"):
+                result = result[7:]
+            if result.startswith("```"):
+                result = result[3:]
+            if result.endswith("```"):
+                result = result[:-3]
+                
+            return json.loads(result.strip())
+            
+        except Exception as e:
+            logger.error(f"Error resolving tie: {str(e)}")
+            # Fallback to random if AI fails
+            import random
+            if not restaurants:
+                return {"winner_id": None, "reason": "No restaurants to choose from"}
+            
+            winner = random.choice(restaurants)
+            return {
+                "winner_id": winner.get('id'),
+                "reason": "Randomly selected as a trusty fallback!"
+            }
+
 
 # Create singleton instance
 gemini_service = GeminiService()

@@ -305,6 +305,48 @@ class ApiService {
       method: 'GET',
     });
   }
+
+  async textToSpeech(text: string, voiceName: string = 'Kore'): Promise<Blob> {
+    const response = await fetch(`${this.baseURL}/api/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice_name: voiceName }),
+    });
+    if (!response.ok) {
+      throw new Error(`TTS request failed: ${response.statusText}`);
+    }
+    return await response.blob();
+  }
+
+  async analyzeImage(imageBase64: string, mimeType: string = 'image/jpeg'): Promise<{
+    success: boolean;
+    image_type?: string;
+    cuisine_types?: string[];
+    dishes_detected?: string[];
+    restaurant_name?: string | null;
+    price_range?: string;
+    vibe?: string[];
+    description?: string;
+    confidence?: number;
+    search_terms?: string[];
+    error?: string;
+  }> {
+    return this.request('/api/analyze-image', {
+      method: 'POST',
+      body: JSON.stringify({ image_base64: imageBase64, mime_type: mimeType }),
+    });
+  }
+
+  async resolveTie(restaurants: any[], preferences: any): Promise<{ winner_id: string; reason: string }> {
+    return this.request('/api/gemini/resolve-tie', {
+      method: 'POST',
+      body: JSON.stringify({
+        restaurants,
+        preferences,
+      }),
+    });
+  }
 }
+
 
 export const apiService = new ApiService();

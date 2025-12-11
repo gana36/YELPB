@@ -241,8 +241,34 @@ export function WinnerScreen({ onNavigate, restaurant, preferences, isOwner = fa
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.3 }}
           className="space-y-4 pb-80"
+
         >
+          {/* AI Tie-Breaker Banner */}
+          {restaurant?.winningReason && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className="rounded-2xl border border-orange-500/30 bg-gradient-to-r from-orange-500/20 to-purple-500/20 p-4 backdrop-blur-xl"
+            >
+              <div className="flex items-start gap-4">
+                <div className="mt-1 rounded-full bg-gradient-to-r from-orange-500 to-purple-500 p-2 text-white">
+                  <Trophy className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="mb-1 text-sm font-bold text-white uppercase tracking-wider">
+                    AI Judge's Decision
+                  </h3>
+                  <p className="text-sm font-medium text-gray-200 leading-relaxed">
+                    "{restaurant.winningReason}"
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* Info Cards */}
+
           <InfoCard
             icon={<MapPin className="h-6 w-6 text-[#F97316]" />}
             label="Address"

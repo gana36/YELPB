@@ -62,7 +62,13 @@ export interface SessionData {
   users: Record<string, SessionUser>;
   votes: SessionVotes;
   locked: boolean;
-  consensus?: SessionPreferences;
+
+
+
+  winnerId?: string;
+  winningReason?: string;
+  sharedRestaurants?: any[];
+  finishedUsers?: string[];
   createdAt: number;
   activities: Activity[];
 }
@@ -135,7 +141,8 @@ class SessionService {
           },
           locked: false,
           createdAt: Date.now(),
-          users: {}  // Initialize users object in main doc
+          users: {},  // Initialize users object in main doc
+          finishedUsers: []  // Initialize finishedUsers array
         });
         console.log('✅ [joinSession] Session created successfully');
       } else {
@@ -253,6 +260,230 @@ class SessionService {
       locked: true,
       consensus: preferences
     });
+  }
+
+
+
+  // Mark a user as finished with swiping
+  async markUserFinished(sessionCode: string, userId: string): Promise<void> {
+    console.log('🏁 [markUserFinished] Marking user as finished:', { sessionCode, userId });
+    const sessionRef = this.getSessionRef(sessionCode);
+    const sessionDoc = await getDoc(sessionRef);
+
+    if (sessionDoc.exists()) {
+      const currentFinished = sessionDoc.data().finishedUsers || [];
+      console.log('🏁 [markUserFinished] Current finished users:', currentFinished);
+
+      if (!currentFinished.includes(userId)) {
+        const updatedFinished = [...currentFinished, userId];
+        await updateDoc(sessionRef, {
+          finishedUsers: updatedFinished
+        });
+        console.log('✅ [markUserFinished] User marked as finished. Updated list:', updatedFinished);
+      } else {
+        console.log('⚠️ [markUserFinished] User already marked as finished');
+      }
+    } else {
+      console.error('❌ [markUserFinished] Session does not exist:', sessionCode);
+    }
+  }
+
+  // Save shared restaurants list (called by owner after fetching from Yelp)
+  async saveRestaurants(sessionCode: string, restaurants: any[]): Promise<void> {
+    const sessionRef = this.getSessionRef(sessionCode);
+    await updateDoc(sessionRef, {
+      sharedRestaurants: restaurants,
+      restaurantsLoadedAt: Date.now()
+    });
+    console.log('📦 Saved', restaurants.length, 'restaurants to Firebase');
+  }
+
+  // Set the final winner for the session
+  async setWinner(sessionCode: string, winnerId: string, reason?: string): Promise<void> {
+    const sessionRef = this.getSessionRef(sessionCode);
+    await updateDoc(sessionRef, {
+      winnerId,
+      winningReason: reason || 'Group Consensus'
+    });
+  }
+
+  // Cache menu data for a restaurant (shared across all users)
+  async cacheMenuData(sessionCode: string, restaurantId: string, menuData: any): Promise<void> {
+    const sessionRef = this.getSessionRef(sessionCode);
+    const sessionDoc = await getDoc(sessionRef);
+
+    if (sessionDoc.exists()) {
+      const cachedMenus = sessionDoc.data().cachedMenus || {};
+      cachedMenus[restaurantId] = {
+        data: menuData,
+        cachedAt: Date.now(),
+        cachedBy: localStorage.getItem('userId')
+      };
+
+      await updateDoc(sessionRef, {
+        cachedMenus
+      });
+      console.log('💾 Cached menu for restaurant:', restaurantId);
+    }
+  }
+
+  // Get cached menu data for a restaurant
+  async getCachedMenuData(sessionCode: string, restaurantId: string): Promise<any | null> {
+    const sessionRef = this.getSessionRef(sessionCode);
+    const sessionDoc = await getDoc(sessionRef);
+
+    if (sessionDoc.exists()) {
+      const cachedMenus = sessionDoc.data().cachedMenus || {};
+      const cached = cachedMenus[restaurantId];
+
+      if (cached) {
+        console.log('📥 Retrieved cached menu for restaurant:', restaurantId);
+        return cached.data;
+      }
+    }
+
+    return null;
+  }
+
+  // Get shared restaurants (returns null if not loaded yet)
+  async getRestaurants(sessionCode: string): Promise<any[] | null> {
+    const sessionRef = this.getSessionRef(sessionCode);
+    const docSnap = await getDoc(sessionRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return data.sharedRestaurants || null;
+    }
+    return null;
+  }
+
+  // Record a user's swipe on a restaurant
+  async swipeRestaurant(
+    sessionCode: string,
+    restaurantId: string,
+    direction: 'left' | 'right',
+    userId: string,
+    userName: string
+  ): Promise<void> {
+    const sessionRef = this.getSessionRef(sessionCode);
+    const docSnap = await getDoc(sessionRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const swipes = data.swipes || {};
+
+      // Store swipe: swipes[restaurantId] = { likes: [...], dislikes: [...] }
+      if (!swipes[restaurantId]) {
+        swipes[restaurantId] = { likes: [], dislikes: [] };
+      }
+
+      // Remove any previous swipe from this user on this restaurant
+      swipes[restaurantId].likes = swipes[restaurantId].likes.filter((s: any) => s.oderId !== userId);
+      swipes[restaurantId].dislikes = swipes[restaurantId].dislikes.filter((s: any) => s.userId !== userId);
+
+      // Add new swipe
+      if (direction === 'right') {
+        swipes[restaurantId].likes.push({ userId, userName, timestamp: Date.now() });
+      } else {
+        swipes[restaurantId].dislikes.push({ userId, userName, timestamp: Date.now() });
+      }
+
+      await updateDoc(sessionRef, { swipes });
+    }
+  }
+
+
+  // Get the restaurant with most likes from all users
+  async getGroupWinner(sessionCode: string): Promise<{ restaurantId: string; likeCount: number; reason?: string } | null> {
+    const sessionRef = this.getSessionRef(sessionCode);
+    const docSnap = await getDoc(sessionRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const swipes = data.swipes || {};
+      const restaurants = data.sharedRestaurants || [];
+      const preferences = data.consensus || {};
+
+      // Calculate likes for each restaurant
+      const restaurantLikes: Record<string, number> = {};
+      let maxLikes = 0;
+
+      for (const [restaurantId, votes] of Object.entries(swipes)) {
+        const likes = ((votes as any).likes || []).length;
+        restaurantLikes[restaurantId] = likes;
+        if (likes > maxLikes) {
+          maxLikes = likes;
+        }
+      }
+
+      if (maxLikes === 0) return null;
+
+      // Find all restaurants with max likes
+      const winners = Object.entries(restaurantLikes)
+        .filter(([_, likes]) => likes === maxLikes)
+        .map(([id, _]) => id);
+
+      // Single winner
+      if (winners.length === 1) {
+        return { restaurantId: winners[0], likeCount: maxLikes, reason: 'Most voted by the group!' };
+      }
+
+      // Tie detected - resolve with AI
+      console.log(`👔 Tie detected between ${winners.length} restaurants. Consulting AI...`);
+      const tiedRestaurants = restaurants.filter((r: any) => winners.includes(r.id.toString()));
+
+      if (tiedRestaurants.length > 0) {
+        try {
+          // Import apiService dynamically to avoid circular dependency if any, 
+          // or just assume it's available. 
+          // Since we are in the same module structure, we can import it at top level, 
+          // but I'll use the one I'm about to add.
+          const { apiService } = await import('./api');
+          const resolution = await apiService.resolveTie(tiedRestaurants, preferences);
+
+          if (resolution.winner_id) {
+            console.log(`🤖 AI resolved tie. Winner: ${resolution.winner_id}`);
+            return {
+              restaurantId: resolution.winner_id.toString(),
+              likeCount: maxLikes,
+              reason: resolution.reason || 'Selected by AI tie-breaker'
+            };
+          }
+        } catch (error) {
+          console.error('❌ AI tie-breaking failed, falling back to random:', error);
+        }
+      }
+
+      // Fallback: Randomly pick one if AI fails or data missing
+      const randomWinner = winners[Math.floor(Math.random() * winners.length)];
+      return {
+        restaurantId: randomWinner,
+        likeCount: maxLikes,
+        reason: 'Randomly selected tie-breaker'
+      };
+    }
+    return null;
+  }
+
+
+  // Get full winner restaurant data
+  async getWinnerRestaurant(sessionCode: string): Promise<any | null> {
+    const winner = await this.getGroupWinner(sessionCode);
+    if (!winner) return null;
+
+    const restaurants = await this.getRestaurants(sessionCode);
+    if (!restaurants) return null;
+
+    const restaurant = restaurants.find((r: any) => r.id === winner.restaurantId || r.id.toString() === winner.restaurantId);
+
+    if (restaurant) {
+      return {
+        ...restaurant,
+        restaurantId: winner.restaurantId,  // Add restaurantId for Firebase
+        winningReason: winner.reason
+      };
+    }
+
+    return null;
   }
 
   // Subscribe to session updates
