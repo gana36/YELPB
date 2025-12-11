@@ -4,6 +4,7 @@ import { X, Heart, Star, MapPin, Clock, TrendingUp, Award, Info, Loader2, Phone,
 import { useYelpSearch } from '../hooks/useYelpSearch';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { Business, apiService } from '../services/api';
+import { sessionService } from '../services/sessionService';
 
 interface SwipeScreenProps {
   onNavigate: (winner: Restaurant | null) => void;
@@ -14,6 +15,8 @@ interface SwipeScreenProps {
     dietary: string;
     distance: string;
   };
+  sessionCode?: string;  // For sharing restaurants via Firebase
+  isOwner?: boolean;     // Owner fetches and saves, others read from Firebase
 }
 
 interface MenuItem {
@@ -59,7 +62,7 @@ interface LikedRestaurant {
   timestamp: number;
 }
 
-export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
+export function SwipeScreen({ onNavigate, preferences, sessionCode, isOwner }: SwipeScreenProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState<'left' | 'right' | null>(null);
   const [showInfo, setShowInfo] = useState(false);
@@ -68,21 +71,100 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [flippedCards, setFlippedCards] = useState<Set<string | number>>(new Set());
+
+  const [isResolvingTie, setIsResolvingTie] = useState(false);
   const [loadingMenus, setLoadingMenus] = useState<Set<string | number>>(new Set());
+  const [usedSharedData, setUsedSharedData] = useState(false); // Track if we used shared data
 
   const { businesses, loading, error, search } = useYelpSearch();
   const { location, requestLocation, error: locationError } = useGeolocation(false);
 
+
+
+
+  const [finishedUserCount, setFinishedUserCount] = useState(0);
+  const [totalUserCount, setTotalUserCount] = useState(0);
+
+  // Fetch restaurants - owner fetches from Yelp and saves to Firebase, others LISTEN to Firebase
   useEffect(() => {
-    requestLocation();
-    fetchRestaurants(location?.latitude, location?.longitude);
-  }, []);
+    let unsubscribe: (() => void) | undefined;
+
+    const loadRestaurants = async () => {
+      // Setup subscription for everyone (Owner AND Non-Owner) to get winner/user updates
+      if (sessionCode) {
+        unsubscribe = sessionService.subscribeToSession(sessionCode, (data) => {
+          // Sync shared deck (Only for Non-Owner)
+          if (!isOwner && data.sharedRestaurants && data.sharedRestaurants.length > 0 && !usedSharedData) {
+            console.log('📥 Synced', data.sharedRestaurants.length, 'shared restaurants from Firebase');
+            setRestaurants(data.sharedRestaurants as Restaurant[]);
+            setIsInitialLoad(false);
+            setUsedSharedData(true);
+          }
+
+          // Sync finished users count
+          const finishedCount = data.finishedUsers ? data.finishedUsers.length : 0;
+          const userCount = data.users ? Object.keys(data.users).length : 0;
+
+          setFinishedUserCount(finishedCount);
+          setTotalUserCount(userCount);
+
+          console.log('📊 User counts updated:', { finishedCount, userCount, data: { finishedUsers: data.finishedUsers, users: data.users } });
+
+          // Sync winner - navigate everyone (INCLUDING OWNER)
+          if (data.winnerId) {
+            console.log('🏆 Winner declared:', data.winnerId);
+            const winnerRest = (data.sharedRestaurants || restaurants).find((r: any) => r.id.toString() === data.winnerId);
+            if (winnerRest) {
+              onNavigate({ ...winnerRest, winningReason: data.winningReason });
+            }
+          }
+
+          // Sync cached menu data from other users
+          if (data.cachedMenus) {
+            setRestaurants(prev => prev.map(r => {
+              const cached = data.cachedMenus[r.id];
+              if (cached && !r.menuData) {
+                console.log('📥 Synced cached menu for:', r.name);
+                return { ...r, menuData: cached.data };
+              }
+              return r;
+            }));
+          }
+        });
+      }
+
+      // Initial Fetch Logic
+      if (sessionCode && !isOwner) {
+        // Non-owners wait for subscription data (handled above)
+        setLoadingPhase(0);
+        return;
+      }
+
+      // Owner or Solo: Request location and fetch from Yelp
+      requestLocation();
+      if (location) {
+        fetchRestaurants(location.latitude, location.longitude);
+      } else {
+        fetchRestaurants();
+      }
+    };
+
+    loadRestaurants();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [sessionCode, isOwner]);
 
   useEffect(() => {
-    if (location) {
-      fetchRestaurants(location.latitude, location.longitude);
+    // Only fetch if we're owner OR no session (solo mode) AND haven't used shared data
+    // And location is ready (and wasn't ready before)
+    if (location && (isOwner || !sessionCode) && !usedSharedData) {
+      if (restaurants.length === 0) {
+        fetchRestaurants(location.latitude, location.longitude);
+      }
     }
-  }, [location]);
+  }, [location, isOwner, sessionCode, usedSharedData]);
 
   const fetchRestaurants = async (lat?: number, lng?: number) => {
     // Build query and categories from preferences
@@ -155,6 +237,16 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
       }));
 
       setRestaurants(formattedRestaurants);
+
+      // If owner and in a session, save restaurants to Firebase for others to use
+      if (isOwner && sessionCode && formattedRestaurants.length > 0) {
+        try {
+          await sessionService.saveRestaurants(sessionCode, formattedRestaurants);
+          console.log('📤 Owner saved restaurants to Firebase for group');
+        } catch (err) {
+          console.error('Failed to save restaurants to Firebase:', err);
+        }
+      }
     } catch (err) {
       console.error('Error fetching restaurants:', err);
     } finally {
@@ -164,9 +256,9 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
 
   // Loading phases for enhanced UX
   const loadingPhases = [
-    { message: "Locating nearby gems...", emoji: "📍", duration: 1500 },
-    { message: `Filtering by ${preferences?.cuisine || 'your taste'}...`, emoji: "🍽️", duration: 1500 },
-    { message: "Ranking the best picks...", emoji: "⭐", duration: 1500 },
+    { message: isOwner || !sessionCode ? "Locating nearby gems..." : "Connecting to group...", emoji: "📍", duration: 1500 },
+    { message: isOwner || !sessionCode ? `Filtering by ${preferences?.cuisine || 'your taste'}...` : "Waiting for host...", emoji: "🍽️", duration: 1500 },
+    { message: isOwner || !sessionCode ? "Ranking the best picks..." : "Syncing restaurant deck...", emoji: "⭐", duration: 1500 },
     { message: "Almost ready!", emoji: "🎉", duration: 1000 },
   ];
 
@@ -196,8 +288,115 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
     }
   }, [loading, isInitialLoad]);
 
-  // Floating food emojis
   const foodEmojis = ['🍕', '🍣', '🌮', '🍜', '🥗', '🍔', '🍝', '🥘', '🍱', '🥡'];
+
+  // Tie breaking loading screen
+  if (isResolvingTie) {
+    return (
+      <div className="flex h-screen w-full flex-col items-center justify-center bg-black px-6">
+        {/* Animated background glow */}
+        <motion.div
+          className="absolute inset-0 bg-gradient-radial from-orange-500/5 via-transparent to-transparent"
+          animate={{
+            scale: [1, 1.2, 1],
+            opacity: [0.3, 0.5, 0.3],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+
+        {/* Scales icon with rotation */}
+        <motion.div
+          className="text-8xl mb-8 relative z-10"
+          animate={{
+            rotate: [0, -10, 10, -5, 5, 0],
+            scale: [1, 1.1, 1],
+          }}
+          transition={{
+            duration: 2,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        >
+          ⚖️
+        </motion.div>
+
+        {/* Title with gradient */}
+        <motion.h2
+          className="text-4xl font-bold mb-3 bg-gradient-to-r from-orange-400 via-orange-500 to-orange-600 bg-clip-text text-transparent"
+          style={{ fontFamily: 'Montserrat, sans-serif' }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          Tie Detected!
+        </motion.h2>
+
+        {/* Subtitle */}
+        <motion.p
+          className="text-gray-400 mb-12 max-w-md text-center text-lg"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+        >
+          Consulting the AI Judge to pick the perfect winner based on your group's vibe...
+        </motion.p>
+
+        {/* Enhanced loading dots */}
+        <div className="flex items-center gap-3 mb-8">
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={i}
+              className="relative"
+              animate={{
+                y: [-8, 8, -8],
+              }}
+              transition={{
+                duration: 1.2,
+                repeat: Infinity,
+                ease: "easeInOut",
+                delay: i * 0.2,
+              }}
+            >
+              <div className="w-4 h-4 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full" />
+              <motion.div
+                className="absolute inset-0 bg-orange-500 rounded-full blur-sm"
+                animate={{
+                  scale: [1, 1.5, 1],
+                  opacity: [0.5, 0, 0.5],
+                }}
+                transition={{
+                  duration: 1.2,
+                  repeat: Infinity,
+                  delay: i * 0.2,
+                }}
+              />
+            </motion.div>
+          ))}
+        </div>
+
+        {/* AI thinking indicator */}
+        <motion.div
+          className="flex items-center gap-2 text-orange-500/70 text-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0.5, 1, 0.5] }}
+          transition={{
+            duration: 2,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        >
+          <span className="inline-block w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
+          <span>AI is analyzing your preferences...</span>
+          <span className="inline-block w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
+        </motion.div>
+      </div>
+    );
+  }
+
 
   if (loading || isInitialLoad) {
     return (
@@ -333,6 +532,211 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
     );
   }
 
+  // Render Waiting / Reveal State if done
+  if (currentIndex >= restaurants.length && !loading && !isInitialLoad) {
+    if (sessionCode) {
+      const progress = totalUserCount > 0 ? (finishedUserCount / totalUserCount) * 100 : 0;
+
+      return (
+        <div className="flex h-screen w-full flex-col items-center justify-center bg-black px-6 text-center">
+          {/* Animated Icon */}
+          <motion.div
+            className="mb-8 relative"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+          >
+            {/* Pulsing rings */}
+            <motion.div
+              className="absolute inset-0 rounded-full bg-orange-500/20"
+              animate={{
+                scale: [1, 1.3, 1],
+                opacity: [0.3, 0, 0.3],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+            />
+            <motion.div
+              className="absolute inset-0 rounded-full bg-orange-500/20"
+              animate={{
+                scale: [1, 1.5, 1],
+                opacity: [0.2, 0, 0.2],
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut",
+                delay: 0.5,
+              }}
+            />
+
+            {/* Icon container */}
+            <div className="relative mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-orange-500/30 to-orange-600/30 backdrop-blur-sm border border-orange-500/30">
+              {isOwner ? (
+                <motion.div
+                  animate={{
+                    rotate: [0, 10, -10, 0],
+                    scale: [1, 1.1, 1],
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                >
+                  <Award className="h-12 w-12 text-orange-500" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }}
+                >
+                  <Loader2 className="h-12 w-12 text-orange-500" />
+                </motion.div>
+              )}
+            </div>
+          </motion.div>
+
+          {/* Title */}
+          <motion.h2
+            className="mb-2 text-3xl font-bold text-white"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            {isOwner ? "All Swipes Complete!" : "Waiting for Host"}
+          </motion.h2>
+
+          {/* Subtitle */}
+          <motion.p
+            className="mb-6 text-gray-400 max-w-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+          >
+            {isOwner
+              ? "Waiting for everyone to finish deciding..."
+              : "Sit tight! The host will reveal the winner shortly."}
+          </motion.p>
+
+          {/* Progress indicator */}
+          {sessionCode && (
+            <motion.div
+              className="mb-8 w-full max-w-xs"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.4 }}
+            >
+              {/* User count badge */}
+              <div className="mb-4 inline-block rounded-full bg-gradient-to-r from-orange-500/20 to-orange-600/20 px-6 py-2 text-sm font-semibold text-orange-400 border border-orange-500/30">
+                {finishedUserCount} / {totalUserCount > 0 ? totalUserCount : '?'} Users Finished
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-orange-500 to-orange-600 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                />
+              </div>
+
+              {/* User avatars/indicators */}
+              <div className="flex justify-center gap-2 mt-4">
+                {Array.from({ length: totalUserCount > 0 ? totalUserCount : 0 }).map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className={`w-3 h-3 rounded-full ${
+                      i < finishedUserCount
+                        ? 'bg-orange-500'
+                        : 'bg-gray-700'
+                    }`}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.5 + i * 0.1 }}
+                  >
+                    {i < finishedUserCount && (
+                      <motion.div
+                        className="w-full h-full rounded-full bg-orange-400"
+                        animate={{
+                          scale: [1, 1.3, 1],
+                          opacity: [1, 0.5, 1],
+                        }}
+                        transition={{
+                          duration: 1.5,
+                          repeat: Infinity,
+                        }}
+                      />
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Reveal button (owner only) */}
+          {isOwner && (
+            <motion.button
+              disabled={totalUserCount === 0 || finishedUserCount < totalUserCount}
+              onClick={async () => {
+                setIsResolvingTie(true);
+                try {
+                  const winner = await sessionService.getWinnerRestaurant(sessionCode);
+                  if (winner) {
+                    // Set the winner in Firebase so non-owners can navigate
+                    await sessionService.setWinner(sessionCode, winner.restaurantId, winner.winningReason);
+                    // Navigate the owner directly (don't wait for subscription)
+                    console.log('🎯 Owner navigating to winner:', winner);
+                    onNavigate(winner);
+                  } else {
+                    alert("No votes? Using fallback.");
+                    onNavigate(null);
+                  }
+                } catch (e) {
+                  console.error(e);
+                  setIsResolvingTie(false);
+                }
+              }}
+              className={`rounded-xl px-8 py-4 font-bold text-white transition-all shadow-lg ${
+                totalUserCount === 0 || finishedUserCount < totalUserCount
+                  ? 'bg-gray-700 cursor-not-allowed opacity-50'
+                  : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 hover:shadow-orange-500/50'
+              }`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              whileHover={
+                totalUserCount > 0 && finishedUserCount >= totalUserCount
+                  ? { scale: 1.05 }
+                  : {}
+              }
+              whileTap={
+                totalUserCount > 0 && finishedUserCount >= totalUserCount
+                  ? { scale: 0.95 }
+                  : {}
+              }
+            >
+              {totalUserCount === 0
+                ? 'Loading...'
+                : finishedUserCount < totalUserCount
+                ? `Waiting for ${totalUserCount - finishedUserCount} more...`
+                : 'Reveal Winner 🏆'}
+            </motion.button>
+          )}
+        </div>
+      );
+    }
+  }
+
+
   if (restaurants.length === 0) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-black">
@@ -343,15 +747,15 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
 
   const currentRestaurant = restaurants[currentIndex];
 
-  const handleSwipe = (swipeDirection: 'left' | 'right') => {
+
+  const handleSwipe = async (swipeDirection: 'left' | 'right') => {
     const currentRestaurant = restaurants[currentIndex];
 
     if (swipeDirection === 'right' && currentRestaurant) {
-      // Show YUM animation
+      // ... (existing like logic)
       setShowYumAnimation(true);
       setTimeout(() => setShowYumAnimation(false), 600);
 
-      // Track liked restaurant
       setLikedRestaurants(prev => [...prev, {
         id: currentRestaurant.id.toString(),
         name: currentRestaurant.name,
@@ -359,15 +763,54 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
       }]);
     }
 
+    // Save swipe to Firebase
+    if (sessionCode && currentRestaurant) {
+      // ... (existing firebase save logic)
+      const userId = localStorage.getItem('userId') || 'anonymous';
+      const userName = localStorage.getItem('userName') || 'User';
+      try {
+        await sessionService.swipeRestaurant(
+          sessionCode,
+          currentRestaurant.id.toString(),
+          swipeDirection,
+          userId,
+          userName
+        );
+        console.log(`📊 Swipe recorded: ${currentRestaurant.name} (${swipeDirection})`);
+      } catch (err) {
+        console.error('Failed to save swipe to Firebase:', err);
+      }
+    }
+
     setDirection(swipeDirection);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       if (currentIndex === restaurants.length - 1) {
-        // Find the most liked restaurant (or just pick the first liked one)
-        const winner = likedRestaurants.length > 0
-          ? restaurants.find(r => r.id.toString() === likedRestaurants[0].id) || null
-          : null;
-        onNavigate(winner);
+        // We are done!
+        console.log('🎬 User finished swiping! Current index:', currentIndex, 'Total restaurants:', restaurants.length);
+
+        if (sessionCode) {
+          // We are in a session.
+          // Mark as finished
+          const userId = localStorage.getItem('userId');
+          console.log('🎬 Marking user as finished:', { sessionCode, userId });
+          if (userId) {
+            await sessionService.markUserFinished(sessionCode, userId);
+          } else {
+            console.error('❌ No userId found in localStorage!');
+          }
+
+          // DO NOT CALCULATE WINNER YET.
+          // Just wait. The UI will render the "waiting" or "reveal" state based on currentIndex
+          setCurrentIndex(currentIndex + 1);
+        } else {
+          // Solo mode - calculate local winner immediately
+          let winner = null;
+          if (likedRestaurants.length > 0) {
+            winner = restaurants.find(r => r.id.toString() === likedRestaurants[0].id) || null;
+          }
+          onNavigate(winner);
+        }
       } else {
         setCurrentIndex(currentIndex + 1);
         setDirection(null);
@@ -391,7 +834,7 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
       return newSet;
     });
 
-    // If flipping to back and no menu data, fetch it using Yelp AI
+    // If flipping to back and no menu data, try to load it
     if (!isCurrentlyFlipped) {
       const restaurant = restaurants.find(r => r.id === restaurantId);
 
@@ -400,8 +843,27 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
         setLoadingMenus(prev => new Set(prev).add(restaurantId));
 
         try {
-          // Use Yelp AI API to get menu items for this restaurant
-          // Include city to help Yelp AI identify the correct restaurant
+          // First, check Firebase cache for menu data from other users
+          if (sessionCode) {
+            const cachedMenu = await sessionService.getCachedMenuData(sessionCode, restaurantId.toString());
+
+            if (cachedMenu) {
+              // Use cached menu data - no API call needed!
+              console.log('✅ Using cached menu from Firebase for:', restaurant.name);
+              setRestaurants(prev => prev.map(r =>
+                r.id === restaurantId ? { ...r, menuData: cachedMenu } : r
+              ));
+              setLoadingMenus(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(restaurantId);
+                return newSet;
+              });
+              return; // Exit early - no need to fetch
+            }
+          }
+
+          // No cached data - fetch from Yelp AI API
+          console.log('🔍 No cached menu found, fetching from API for:', restaurant.name);
           const locationContext = restaurant.city ? ` in ${restaurant.city}` : '';
           const chatResponse = await apiService.chat({
             query: `What are the popular menu items and dishes at ${restaurant.name}${locationContext}? Include prices if available.`,
@@ -414,7 +876,6 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
 
           // Parse the response into menu format
           if (chatResponse.response_text) {
-            // Create a simple menu structure from the AI response
             const menuData = {
               categories: [{
                 name: 'Popular Items',
@@ -424,30 +885,21 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
               price_range: restaurant.price || '$$',
               aiResponse: chatResponse.response_text
             };
+
+            // Update local state
             setRestaurants(prev => prev.map(r =>
               r.id === restaurantId ? { ...r, menuData } : r
             ));
+
+            // Cache in Firebase for other users
+            if (sessionCode) {
+              await sessionService.cacheMenuData(sessionCode, restaurantId.toString(), menuData);
+            }
           } else {
             setRestaurants(prev => prev.map(r =>
               r.id === restaurantId ? { ...r, menuError: 'No menu info available' } : r
             ));
           }
-
-          /* AGENTIC MENU SCRAPING APPROACH - Commented out, keeping for reference
-          const urlToScrape = restaurant?.menuUrl || restaurant?.url;
-          if (urlToScrape) {
-            const result = await apiService.scrapeMenu(urlToScrape);
-            if (result.success && result.menu) {
-              setRestaurants(prev => prev.map(r =>
-                r.id === restaurantId ? { ...r, menuData: result.menu } : r
-              ));
-            } else {
-              setRestaurants(prev => prev.map(r =>
-                r.id === restaurantId ? { ...r, menuError: result.error || 'Could not load menu' } : r
-              ));
-            }
-          }
-          */
         } catch (err) {
           console.error('Failed to fetch menu:', err);
           setRestaurants(prev => prev.map(r =>
@@ -481,23 +933,6 @@ export function SwipeScreen({ onNavigate, preferences }: SwipeScreenProps) {
           </div>
         </motion.div>
       )}
-
-      {/* Next card preview - hidden to avoid showing card before swipe
-      {currentIndex < restaurants.length - 1 && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0.5 }}
-            animate={{ scale: 0.95, opacity: 0.8 }}
-            className="absolute inset-8 overflow-hidden rounded-[32px]"
-            style={{
-              backgroundImage: `url(${restaurants[currentIndex + 1].image})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          />
-        </div>
-      )}
-      */}
 
       {/* Current Card */}
       <AnimatePresence mode="wait">

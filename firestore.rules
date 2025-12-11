@@ -14,6 +14,15 @@ service cloud.firestore {
       // Anyone can update room data (for joining, updating manifest, etc.)
       allow update: if true;
 
+      // Users subcollection (for tracking online users)
+      match /users/{userId} {
+        // Anyone can read users
+        allow read: if true;
+
+        // Anyone can write their own user document
+        allow write: if true;
+      }
+
       // Events subcollection (proposals, locks, joins)
       match /events/{eventId} {
         // Anyone can read events
@@ -24,7 +33,7 @@ service cloud.firestore {
       }
 
       // Votes subcollection (swipe voting)
-      match /votes/{userId} {
+      match /votes/{voteId} {
         // Anyone can read votes
         allow read: if true;
 
