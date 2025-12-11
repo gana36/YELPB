@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -609,6 +609,98 @@ async def scrape_menu(request: MenuScrapeRequest):
     except Exception as e:
         logger.error(f"Error scraping menu: {str(e)}")
         return {"success": False, "error": str(e)}
+
+
+class TTSRequest(BaseModel):
+    """Request model for text-to-speech"""
+    text: str
+    voice_name: Optional[str] = "Kore"
+
+
+@app.post("/api/tts")
+async def text_to_speech(request: TTSRequest):
+    """
+    Convert text to speech using Gemini TTS.
+    
+    Args:
+        request: TTSRequest with text and optional voice_name
+    
+    Returns:
+        Audio data (WAV format)
+    """
+    try:
+        from fastapi.responses import Response
+        
+        audio_bytes = await gemini_service.text_to_speech(
+            text=request.text,
+            voice_name=request.voice_name
+        )
+        
+        return Response(
+            content=audio_bytes,
+            media_type="audio/wav",
+            headers={"Content-Disposition": "inline; filename=speech.wav"}
+        )
+    except Exception as e:
+        logger.error(f"Error in TTS endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ImageAnalysisRequest(BaseModel):
+    """Request model for image analysis"""
+    image_base64: str
+    mime_type: str = "image/jpeg"
+
+
+@app.post("/api/analyze-image")
+async def analyze_image(request: ImageAnalysisRequest):
+    """
+    Analyze a food or restaurant image to detect preferences.
+    
+    Args:
+        request: ImageAnalysisRequest with base64 image data
+    
+    Returns:
+        Detected cuisine, vibe, price range, and restaurant info
+    """
+    try:
+        import base64
+        image_data = base64.b64decode(request.image_base64)
+        
+        result = await gemini_service.analyze_food_image(
+            image_data=image_data,
+            mime_type=request.mime_type
+        )
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error analyzing image: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+class TieBreakerRequest(BaseModel):
+    restaurants: List[Dict[str, Any]]
+    preferences: Dict[str, Any]
+
+
+@app.post("/api/gemini/resolve-tie")
+async def resolve_tie(request: TieBreakerRequest):
+    """
+    Resolve a tie between multiple restaurants using AI
+    """
+    try:
+        if not request.restaurants:
+            raise HTTPException(status_code=400, detail="No restaurants provided")
+            
+        result = await gemini_service.resolve_tie(
+            restaurants=request.restaurants,
+            preferences=request.preferences
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error in tie breaker endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

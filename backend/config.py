@@ -35,10 +35,12 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in v.split(',')]
         return v
 
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False
+        case_sensitive=False,
+        extra='ignore'
     )
 
 

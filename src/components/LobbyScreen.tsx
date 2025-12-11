@@ -60,9 +60,30 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
   const [showNewActivity, setShowNewActivity] = useState(false);
   const [chatMinimized, setChatMinimized] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<SessionUser[]>([]);
-  const [currentUserId] = useState(() => `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+  const [currentUserId] = useState(() => {
+    // Check if userId already exists in localStorage
+    let userId = localStorage.getItem('userId');
+    if (!userId) {
+      // Generate new userId and save to localStorage
+      userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem('userId', userId);
+      console.log('🆔 Generated and saved new userId:', userId);
+    } else {
+      console.log('🆔 Using existing userId from localStorage:', userId);
+    }
+    return userId;
+  });
   const [hoveredUserId, setHoveredUserId] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false); // Track if current user is session owner
+  const [lockedConsensus, setLockedConsensus] = useState<{
+    budget?: string;
+    cuisine?: string;
+    vibe?: string;
+    dietary?: string;
+    distance?: string;
+    bookingDate?: string;
+    bookingTime?: string;
+  } | null>(null); // Store the locked consensus from Firebase
 
   // Multi-user voting state from Firebase
   const [userVotes, setUserVotes] = useState<{
@@ -166,6 +187,11 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
         setIsOwner((data as any).ownerId === currentUserId);
         console.log('👑 Owner check:', { ownerId: (data as any).ownerId, currentUserId, isOwner: (data as any).ownerId === currentUserId });
       }
+      // Get locked consensus from Firebase (shared across all users)
+      if ((data as any).consensus) {
+        setLockedConsensus((data as any).consensus);
+        console.log('📋 Loaded locked consensus from Firebase:', (data as any).consensus);
+      }
       // Also get users from main document (backup method)
       if (data.users) {
         const usersArray = Object.values(data.users) as SessionUser[];
@@ -176,14 +202,13 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
       }
     });
 
-    // Cleanup on unmount
+    // Cleanup subscriptions on unmount (but keep user in session)
     return () => {
       unsubscribeUsers();
       unsubscribeActivities();
       unsubscribeSession();
-      sessionService.leaveSession(sessionCode, currentUserId).catch(err => {
-        console.error('Failed to leave session:', err);
-      });
+      // Don't remove user from session - they're just navigating to next screen
+      // Users will be removed when they close the tab (handled by window beforeunload in App.tsx)
     };
   }, [sessionCode, currentUserId]);
 
@@ -244,7 +269,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
 
     // Budget: Use LOWEST voted (no one gets priced out)
     const budgetVotes = getTopVoted('budget', budgetOptions);
-    let mergedBudget = budget; // fallback to user's selection
+    let mergedBudget = '';  // Empty if no votes
     if (budgetVotes.length > 0) {
       // Find the lowest budget among top votes
       mergedBudget = budgetVotes.reduce((lowest, current) =>
@@ -254,15 +279,15 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
 
     // Cuisine: Include ALL top voted (ties included)
     const cuisineVotes = getTopVoted('cuisine', cuisineOptions);
-    const mergedCuisine = cuisineVotes.length > 0 ? cuisineVotes.join(' ') : cuisine;
+    const mergedCuisine = cuisineVotes.length > 0 ? cuisineVotes.join(' ') : '';
 
     // Vibe: Include ALL top voted (ties included)
     const vibeVotes = getTopVoted('vibe', vibeOptions);
-    const mergedVibe = vibeVotes.length > 0 ? vibeVotes.join(' ') : vibe;
+    const mergedVibe = vibeVotes.length > 0 ? vibeVotes.join(' ') : '';
 
     // Dietary: Use MOST restrictive (if anyone needs it, include it)
     const dietaryPriority = ['Vegan', 'Vegetarian', 'Gluten-Free', 'Halal', 'Kosher', 'None'];
-    let mergedDietary = dietary;
+    let mergedDietary = 'None';  // Default to None
     for (const diet of dietaryPriority) {
       if (getVoteCount('dietary', diet) > 0) {
         mergedDietary = diet;
@@ -272,7 +297,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
 
     // Distance: Use HIGHEST voted (include all locations)
     const distanceVotes = getTopVoted('distance', distanceOptions);
-    let mergedDistance = distance;
+    let mergedDistance = '2 mi';  // Default
     if (distanceVotes.length > 0) {
       mergedDistance = distanceVotes.reduce((highest, current) =>
         distanceRank.indexOf(current) > distanceRank.indexOf(highest) ? current : highest
@@ -475,28 +500,36 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
               </div>
             </div>
             <div className="p-3 space-y-2">
-              <div className="flex items-start gap-2">
-                <div className="flex-shrink-0 mt-0.5">
-                  <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-[10px] text-red-400 font-semibold mb-0.5">MUST-HAVES</p>
-                  <p className="text-xs text-gray-300">
-                    Budget max: {budget || '—'} • Distance: {distance} • Dietary: {dietary}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <div className="flex-shrink-0 mt-0.5">
-                  <div className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-[10px] text-yellow-400 font-semibold mb-0.5">PREFERENCES</p>
-                  <p className="text-xs text-gray-300">
-                    Cuisine: {cuisine || '—'} • Vibe: {vibe || '—'}
-                  </p>
-                </div>
-              </div>
+              {(() => {
+                // Get merged preferences from all votes
+                const merged = getMergedPreferences();
+                return (
+                  <>
+                    <div className="flex items-start gap-2">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] text-red-400 font-semibold mb-0.5">MUST-HAVES</p>
+                        <p className="text-xs text-gray-300">
+                          Budget max: {merged.budget || '—'} • Distance: {merged.distance} • Dietary: {merged.dietary}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <div className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] text-yellow-400 font-semibold mb-0.5">PREFERENCES</p>
+                        <p className="text-xs text-gray-300">
+                          Cuisine: {merged.cuisine || '—'} • Vibe: {merged.vibe || '—'}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </motion.div>
@@ -783,24 +816,56 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
 
           {/* Action Button */}
           {!locked ? (
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => setLocked(true)}
-              className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#F97316] to-[#fb923c] py-3 shadow-xl shadow-orange-500/30"
-            >
-              <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0"
-                animate={{ x: ['-200%', '200%'] }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-              />
-              <div className="relative flex items-center justify-center gap-2">
-                <Lock className="h-4 w-4" />
-                <span className="text-sm" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
-                  Lock Preferences
-                </span>
+            // Lock Preferences - OWNER ONLY
+            isOwner ? (
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={async () => {
+                  // Sync to Firebase so all users see the locked state
+                  try {
+                    // Use MERGED preferences from all votes - NOT owner's local state
+                    const merged = getMergedPreferences();
+                    await sessionService.lockPreferences(sessionCode, {
+                      budget: merged.budget || '$$',  // Default if no votes
+                      cuisine: merged.cuisine || '',
+                      vibe: merged.vibe || '',
+                      dietary: merged.dietary || 'None',
+                      distance: merged.distance || '2 mi',
+                      bookingDate,
+                      bookingTime
+                    });
+                    console.log('🔒 Locked with merged consensus:', merged);
+                    // Local state will be updated via Firebase subscription
+                  } catch (error) {
+                    console.error('Failed to lock preferences:', error);
+                  }
+                }}
+                className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#F97316] to-[#fb923c] py-3 shadow-xl shadow-orange-500/30"
+              >
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0"
+                  animate={{ x: ['-200%', '200%'] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                />
+                <div className="relative flex items-center justify-center gap-2">
+                  <Lock className="h-4 w-4" />
+                  <span className="text-sm" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+                    Lock Preferences
+                  </span>
+                </div>
+              </motion.button>
+            ) : (
+              // Non-owner sees "Waiting for host to lock preferences"
+              <div className="w-full rounded-xl border border-white/10 bg-white/5 py-3 text-center">
+                <div className="flex items-center justify-center gap-2 text-gray-400">
+                  <Lock className="h-4 w-4" />
+                  <span className="text-sm" style={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 500 }}>
+                    Waiting for host to lock preferences...
+                  </span>
+                </div>
               </div>
-            </motion.button>
+            )
           ) : (
             <>
               {/* Merged Preferences Summary */}
@@ -847,16 +912,17 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
                 onClick={() => {
-                  const merged = getMergedPreferences();
-                  console.log('🎯 Merged preferences:', merged);
+                  // Use the LOCKED consensus from Firebase - same for all users
+                  const prefs = lockedConsensus || getMergedPreferences();
+                  console.log('🎯 Using locked consensus for swiping:', prefs);
                   onNavigate({
-                    cuisine: merged.cuisine,
-                    budget: merged.budget,
-                    vibe: merged.vibe,
-                    dietary: merged.dietary,
-                    distance: merged.distance,
-                    bookingDate,
-                    bookingTime,
+                    cuisine: prefs.cuisine || '',
+                    budget: prefs.budget || '$$',
+                    vibe: prefs.vibe || '',
+                    dietary: prefs.dietary || 'None',
+                    distance: prefs.distance || '2 mi',
+                    bookingDate: (prefs as any).bookingDate || bookingDate,
+                    bookingTime: (prefs as any).bookingTime || bookingTime,
                     partySize,
                     isOwner
                   });
@@ -896,6 +962,7 @@ export function LobbyScreen({ sessionCode, onNavigate }: LobbyScreenProps) {
         onlineUsers={onlineUsers}
         userVotes={userVotes}
         sessionCode={sessionCode}
+        currentUserName={localStorage.getItem('userName') || 'User'}
         minimized={chatMinimized}
         onToggleMinimized={() => setChatMinimized(!chatMinimized)}
         onPreferencesDetected={(prefs) => {

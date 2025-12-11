@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { LobbyScreen } from './components/LobbyScreen';
 import { SwipeScreen } from './components/SwipeScreen';
 import { WinnerScreen } from './components/WinnerScreen';
 import { PageTransition } from './components/PageTransition';
+import { sessionService } from './services/sessionService';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'welcome' | 'lobby' | 'swipe' | 'winner'>('welcome');
@@ -21,6 +22,26 @@ export default function App() {
   });
   const [winnerRestaurant, setWinnerRestaurant] = useState<any>(null);
   const [isOwner, setIsOwner] = useState(false);
+
+  // Cleanup: Remove user from session when they close the browser tab
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const userId = localStorage.getItem('userId');
+      if (userId && sessionCode) {
+        // Use sendBeacon for reliable cleanup on page unload
+        const data = JSON.stringify({ sessionCode, userId });
+        console.log('🚪 User closing tab, removing from session:', { sessionCode, userId });
+
+        // Synchronous cleanup for beforeunload
+        sessionService.leaveSession(sessionCode, userId).catch(err => {
+          console.error('Failed to leave session on unload:', err);
+        });
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [sessionCode]);
 
   const handleStartSession = (code: string) => {
     setSessionCode(code);
@@ -50,6 +71,8 @@ export default function App() {
           <PageTransition key="swipe">
             <SwipeScreen
               preferences={preferences}
+              sessionCode={sessionCode}
+              isOwner={isOwner}
               onNavigate={(winner) => {
                 setWinnerRestaurant(winner);
                 setCurrentScreen('winner');

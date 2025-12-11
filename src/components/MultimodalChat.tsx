@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Mic, Image as ImageIcon, X, Loader2, ChevronDown, MessageCircle, Sparkles } from 'lucide-react';
+import { Send, Mic, Image as ImageIcon, Camera, X, Loader2, ChevronDown, MessageCircle, Sparkles } from 'lucide-react';
 import { apiService } from '../services/api';
+import { VoiceMode } from './VoiceMode';
 
 interface Message {
   id: number;
@@ -51,6 +52,7 @@ interface MultimodalChatProps {
     distance: Record<string, UserVote[]>;
   };
   sessionCode?: string;
+  currentUserName?: string; // Name of the user currently chatting
   minimized?: boolean;
   onToggleMinimized?: () => void;
   onPreferencesDetected?: (prefs: {
@@ -67,6 +69,7 @@ export function MultimodalChat({
   onlineUsers = [],
   userVotes,
   sessionCode,
+  currentUserName,
   minimized = false,
   onToggleMinimized,
   onPreferencesDetected
@@ -90,20 +93,39 @@ export function MultimodalChat({
   const [isRecording, setIsRecording] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [voiceModeOpen, setVoiceModeOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const messageIdRef = useRef(Date.now()); // Counter for unique message IDs
+
+  // Generate unique message ID
+  const getNextMsgId = () => {
+    messageIdRef.current += 1;
+    return messageIdRef.current;
+  };
 
   // Build session context from activities and votes
   const buildSessionContext = (): string => {
     let context = '';
 
+    // IMPORTANT: Identify the current user chatting - this is a PRIVATE chat
+    const myName = currentUserName || localStorage.getItem('userName') || 'User';
+    context += `=== CRITICAL INSTRUCTIONS ===\n`;
+    context += `You are having a PRIVATE 1-on-1 conversation with: ${myName}\n`;
+    context += `- Address ONLY ${myName} directly (use "you" or their name)\n`;
+    context += `- Do NOT address other users by name or ask them questions\n`;
+    context += `- You can MENTION what others voted for as context, but talk TO ${myName} only\n`;
+    context += `- Example: "Gana voted for $$" is OK, but "Gana, what do you think?" is NOT OK\n`;
+    context += `=== END INSTRUCTIONS ===\n\n`;
+
     // Add user info
-    if (onlineUsers.length > 0) {
+    const otherUsers = onlineUsers.filter(u => u.name.toLowerCase() !== myName.toLowerCase());
+    if (otherUsers.length > 0) {
       context += `Session: ${sessionCode || 'Unknown'}\n`;
-      context += `Users online (${onlineUsers.length}): ${onlineUsers.map(u => u.name).join(', ')}\n\n`;
+      context += `Other users in session: ${otherUsers.map(u => u.name).join(', ')}\n\n`;
     }
 
     // Add recent activity (last 5)
@@ -152,28 +174,7 @@ export function MultimodalChat({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // React to activity feed changes - proactive AI messages
-  useEffect(() => {
-    if (activities.length === 0) return;
-
-    const latestActivity = activities[activities.length - 1];
-    const activityAge = Date.now() - latestActivity.timestamp.getTime();
-
-    // Only react to recent activities (within last 2 seconds) to avoid flooding
-    if (activityAge > 2000) return;
-
-    // Don't react if chat is minimized
-    if (minimized) return;
-
-    // React to specific events
-    if (latestActivity.type === 'join' && latestActivity.user !== 'You') {
-      setMessages(prev => [...prev, {
-        id: Date.now(),
-        sender: 'ai',
-        text: `${latestActivity.user} just joined! Welcome to the group 👋`
-      }]);
-    }
-  }, [activities, minimized]);
+  // Note: Activity feed reactions removed from chat as they duplicate the Activity Feed at the top
 
   // Convert file to base64
   const fileToBase64 = (file: File): Promise<string> => {
@@ -229,7 +230,7 @@ export function MultimodalChat({
     try {
       // Add user message indicator
       setMessages(prev => [...prev, {
-        id: Date.now(),
+        id: getNextMsgId(),
         sender: 'user',
         text: '🎤 Voice message',
         hasAudio: true
@@ -251,7 +252,7 @@ export function MultimodalChat({
         if (transcription) {
           // Show what we heard (shortened for better UX)
           setMessages(prev => [...prev, {
-            id: Date.now() + 1,
+            id: getNextMsgId(),
             sender: 'ai',
             text: `🎤 "${transcription}"`
           }]);
@@ -323,7 +324,7 @@ export function MultimodalChat({
           // Use smart response for voice too
           const voiceResponse = getSmartResponse(transcription, voiceDetectedPrefs);
           setMessages(prev => [...prev, {
-            id: Date.now() + 2,
+            id: getNextMsgId(),
             sender: 'ai',
             text: voiceResponse
           }]);
@@ -334,7 +335,7 @@ export function MultimodalChat({
       console.error('Error sending audio:', error);
       setIsTyping(false);
       setMessages(prev => [...prev, {
-        id: Date.now() + 1,
+        id: getNextMsgId(),
         sender: 'ai',
         text: 'Sorry, I had trouble processing your voice message. Please try again or type your message.'
       }]);
@@ -352,17 +353,23 @@ export function MultimodalChat({
     }
   };
 
-  // Send image message
+  // Send image message with enhanced analysis
   const sendImageMessage = async () => {
     if (!selectedImage) return;
 
     try {
-      // Add user message with image indicator
+      // Capture the message text and clear input
+      const userText = message.trim();
+      setMessage('');
+
+      // Add user message with image indicator and optional text
+      const userMsgId = getNextMsgId();
       setMessages(prev => [...prev, {
-        id: Date.now(),
+        id: userMsgId,
         sender: 'user',
-        text: '📷 Photo of food',
-        hasImage: true
+        text: userText ? `📷 ${userText}` : '📷 Photo uploaded',
+        hasImage: true,
+        imageUrl: imagePreview || undefined
       }]);
 
       setIsTyping(true);
@@ -370,44 +377,90 @@ export function MultimodalChat({
       // Convert image to base64
       const base64Image = await fileToBase64(selectedImage);
 
-      // Process image to identify food type
-      const result = await apiService.processImage(base64Image, selectedImage.type);
+      // Use the new enhanced image analysis endpoint
+      const result = await apiService.analyzeImage(base64Image, selectedImage.type);
 
       setIsTyping(false);
 
-      let imageDetectedPrefs: any = {};
+      if (result.success) {
+        console.log('Image analysis result:', result);
 
-      if (result.success && result.result && onPreferencesDetected) {
-        try {
-          const analysis = JSON.parse(result.result);
+        // Build detected preferences from analysis
+        const detectedPrefs: any = {};
 
-          // Extract cuisine from image analysis
-          if (analysis.requirements && analysis.requirements.cuisine) {
-            const cuisine = analysis.requirements.cuisine;
-            const cuisineMap: Record<string, string> = {
-              'italian': 'Italian', 'japanese': 'Japanese', 'mexican': 'Mexican',
-              'french': 'French', 'thai': 'Thai', 'indian': 'Indian', 'korean': 'Korean',
-              'chinese': 'Chinese', 'spanish': 'Spanish'
-            };
-            const mapped = cuisineMap[cuisine.toLowerCase()] || cuisine;
-            imageDetectedPrefs.cuisine = mapped;
-            onPreferencesDetected({ cuisine: mapped });
-          }
-
-          const foodType = analysis.intent || analysis.requirements?.cuisine || 'food';
-          setMessages(prev => [...prev, {
-            id: Date.now() + 1,
-            sender: 'ai',
-            text: `📷 I see ${foodType}! ${imageDetectedPrefs.cuisine ? `Cuisine set to ${imageDetectedPrefs.cuisine}.` : ''} Want to add price or vibe?`
-          }]);
-        } catch (error) {
-          console.error('Error parsing image:', error);
-          setMessages(prev => [...prev, {
-            id: Date.now() + 1,
-            sender: 'ai',
-            text: `I see your food photo! Try describing what you want in text for better preference detection.`
-          }]);
+        // Extract cuisine
+        if (result.cuisine_types && result.cuisine_types.length > 0) {
+          const cuisine = result.cuisine_types[0];
+          const cuisineMap: Record<string, string> = {
+            'italian': 'Italian', 'japanese': 'Japanese', 'mexican': 'Mexican',
+            'french': 'French', 'thai': 'Thai', 'indian': 'Indian', 'korean': 'Korean',
+            'chinese': 'Chinese', 'spanish': 'Spanish', 'vietnamese': 'Vietnamese',
+            'greek': 'Greek', 'mediterranean': 'Mediterranean', 'american': 'American'
+          };
+          detectedPrefs.cuisine = cuisineMap[cuisine.toLowerCase()] || cuisine;
         }
+
+        // Extract price range
+        if (result.price_range) {
+          const priceMap: Record<string, string> = {
+            '$': '$', '$$': '$$', '$$$': '$$$', '$$$$': '$$$$'
+          };
+          detectedPrefs.budget = priceMap[result.price_range] || '$$';
+        }
+
+        // Extract vibe
+        if (result.vibe && result.vibe.length > 0) {
+          const vibeMap: Record<string, string> = {
+            'casual': 'Casual', 'fancy': 'Fine Dining', 'romantic': 'Romantic',
+            'family': 'Family-Friendly', 'trendy': 'Trendy', 'cozy': 'Cozy',
+            'outdoor': 'Outdoor Seating', 'upscale': 'Fine Dining'
+          };
+          detectedPrefs.vibe = vibeMap[result.vibe[0].toLowerCase()] || result.vibe[0];
+        }
+
+        // Call preference callback if we detected anything
+        if (Object.keys(detectedPrefs).length > 0 && onPreferencesDetected) {
+          onPreferencesDetected(detectedPrefs);
+        }
+
+        // Build response message
+        let responseText = '';
+
+        if (result.image_type === 'restaurant') {
+          if (result.restaurant_name) {
+            responseText = `📍 I see a restaurant: **${result.restaurant_name}**! `;
+          } else {
+            responseText = `🏪 I see a restaurant! `;
+          }
+        } else if (result.dishes_detected && result.dishes_detected.length > 0) {
+          responseText = `🍽️ I see: ${result.dishes_detected.join(', ')}! `;
+        } else {
+          responseText = `📷 I analyzed your photo! `;
+        }
+
+        const prefParts = [];
+        if (detectedPrefs.cuisine) prefParts.push(`🍳 Cuisine: ${detectedPrefs.cuisine}`);
+        if (detectedPrefs.budget) prefParts.push(`💰 Budget: ${detectedPrefs.budget}`);
+        if (detectedPrefs.vibe) prefParts.push(`✨ Vibe: ${detectedPrefs.vibe}`);
+
+        if (prefParts.length > 0) {
+          responseText += `\n\nDetected preferences:\n${prefParts.join('\n')}\n\nI've updated your preferences! Anything else to add?`;
+        } else {
+          responseText += `\n\n${result.description || 'Looks delicious!'} Tell me more about what you're looking for.`;
+        }
+
+        setMessages(prev => [...prev, {
+          id: getNextMsgId(),
+          sender: 'ai',
+          text: responseText
+        }]);
+      } else {
+        // Fallback to old method
+        setMessages(prev => [...prev, {
+          id: getNextMsgId(),
+          sender: 'ai',
+          text: `I see your photo! Try describing what you want in text for better preference detection.`
+        }]);
       }
 
       // Clear image
@@ -417,7 +470,7 @@ export function MultimodalChat({
       console.error('Error sending image:', error);
       setIsTyping(false);
       setMessages(prev => [...prev, {
-        id: Date.now() + 1,
+        id: getNextMsgId(),
         sender: 'ai',
         text: 'Sorry, I had trouble analyzing that image. Please try again.'
       }]);
@@ -511,7 +564,7 @@ export function MultimodalChat({
     }
 
     const userMessage = message.trim();
-    setMessages(prev => [...prev, { id: Date.now(), sender: 'user', text: userMessage }]);
+    setMessages(prev => [...prev, { id: getNextMsgId(), sender: 'user', text: userMessage }]);
     setMessage('');
 
     setIsTyping(true);
@@ -638,7 +691,7 @@ export function MultimodalChat({
       }
 
       setMessages(prev => [...prev, {
-        id: Date.now() + 1,
+        id: getNextMsgId(),
         sender: 'ai',
         text: aiMessage
       }]);
@@ -650,7 +703,7 @@ export function MultimodalChat({
       const isBackendDown = errorMsg.includes('Network error') || errorMsg.includes('connect');
 
       setMessages(prev => [...prev, {
-        id: Date.now() + 1,
+        id: getNextMsgId(),
         sender: 'ai',
         text: isBackendDown
           ? '⚠️ Backend server not running. Please start the Python backend: cd backend && python main.py'
@@ -687,8 +740,8 @@ export function MultimodalChat({
       <button
         onClick={onToggleMinimized}
         className={`flex items-center justify-center transition-all ${minimized
-            ? 'w-full h-full rounded-full bg-gradient-to-br from-[#F97316] to-[#fb923c] hover:scale-110 shadow-lg shadow-orange-500/50'
-            : 'w-full border-b border-white/5 bg-gradient-to-r from-orange-500/10 to-transparent px-4 py-2.5 hover:from-orange-500/15'
+          ? 'w-full h-full rounded-full bg-gradient-to-br from-[#F97316] to-[#fb923c] hover:scale-110 shadow-lg shadow-orange-500/50'
+          : 'w-full border-b border-white/5 bg-gradient-to-r from-orange-500/10 to-transparent px-4 py-2.5 hover:from-orange-500/15'
           }`}
       >
         {minimized ? (
@@ -755,8 +808,8 @@ export function MultimodalChat({
                   >
                     <div
                       className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${msg.sender === 'ai'
-                          ? 'border border-green-500/20 bg-gradient-to-br from-zinc-900 to-zinc-800/50 text-gray-100 shadow-lg shadow-green-500/10'
-                          : 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/20'
+                        ? 'border border-green-500/20 bg-gradient-to-br from-zinc-900 to-zinc-800/50 text-gray-100 shadow-lg shadow-green-500/10'
+                        : 'bg-gradient-to-r from-[#F97316] to-[#fb923c] text-white shadow-lg shadow-orange-500/20'
                         }`}
                       style={{
                         fontFamily: msg.sender === 'ai' ? 'Montserrat, sans-serif' : 'inherit',
@@ -818,12 +871,23 @@ export function MultimodalChat({
               className="border-t border-white/5 bg-black/40 p-3"
             >
               <div className="flex gap-2">
-                {/* Hidden file input */}
+                {/* Hidden file input for gallery upload */}
                 <input
                   type="file"
                   ref={fileInputRef}
                   onChange={handleImageSelect}
                   accept="image/*"
+                  className="hidden"
+                  style={{ display: 'none' }}
+                />
+
+                {/* Hidden file input for camera capture */}
+                <input
+                  type="file"
+                  id="cameraInput"
+                  onChange={handleImageSelect}
+                  accept="image/*"
+                  capture="environment"
                   className="hidden"
                   style={{ display: 'none' }}
                 />
@@ -845,6 +909,17 @@ export function MultimodalChat({
                   className="flex-1 rounded-lg bg-zinc-900/80 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none transition-all focus:bg-zinc-900 focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50"
                 />
 
+                {/* Camera Capture Button */}
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => document.getElementById('cameraInput')?.click()}
+                  className="rounded-lg bg-zinc-900/80 p-2 transition-all hover:bg-zinc-800"
+                  title="Take photo"
+                >
+                  <Camera className="h-4 w-4 text-gray-400" />
+                </motion.button>
+
                 {/* Image Upload Button */}
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -860,20 +935,11 @@ export function MultimodalChat({
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={isRecording ? stopRecording : startRecording}
-                  className={`rounded-lg p-2 transition-all ${isRecording
-                      ? 'bg-red-500 animate-pulse'
-                      : 'bg-zinc-900/80 hover:bg-zinc-800'
-                    }`}
-                  title={isRecording ? "Stop recording" : "Voice input"}
+                  onClick={() => setVoiceModeOpen(true)}
+                  className="rounded-lg p-2 transition-all bg-zinc-900/80 hover:bg-zinc-800"
+                  title="Voice mode"
                 >
-                  {isRecording ? (
-                    <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 1, repeat: Infinity }}>
-                      <Mic className="h-4 w-4 text-white" />
-                    </motion.div>
-                  ) : (
-                    <Mic className="h-4 w-4 text-gray-400" />
-                  )}
+                  <Mic className="h-4 w-4 text-gray-400" />
                 </motion.button>
 
                 {/* Send Button */}
@@ -892,6 +958,30 @@ export function MultimodalChat({
           </>
         )}
       </AnimatePresence>
+
+      {/* Voice Mode - Fullscreen conversation */}
+      <VoiceMode
+        isOpen={voiceModeOpen}
+        onClose={() => setVoiceModeOpen(false)}
+        onTranscription={(text) => {
+          // Add user message to chat
+          setMessages(prev => [...prev, {
+            id: getNextMsgId(),
+            sender: 'user',
+            text: `🎤 ${text}`,
+            hasAudio: true
+          }]);
+        }}
+        onAIResponse={(text) => {
+          // Add AI response to chat
+          setMessages(prev => [...prev, {
+            id: getNextMsgId(),
+            sender: 'ai',
+            text: `🔊 ${text}`
+          }]);
+        }}
+        onPreferencesDetected={onPreferencesDetected}
+      />
     </motion.div>
   );
 }
