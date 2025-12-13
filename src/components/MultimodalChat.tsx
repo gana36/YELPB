@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Mic, Image as ImageIcon, X, Loader2, ChevronDown, MessageCircle, Sparkles, MessageSquare } from 'lucide-react';
+import { Send, Mic, Image as ImageIcon, Camera, X, Loader2, ChevronDown, MessageCircle, Sparkles, MessageSquare } from 'lucide-react';
 import { apiService } from '../services/api';
+import { VoiceMode } from './VoiceMode';
 
 interface Message {
   id: number;
