@@ -45,6 +45,7 @@ next-env.d.ts
 backend/__pycache__/
 backend/*.pyc
 backend/.env
+backend/env
 backend/venv/
 backend/yelpbackend
 backend/.venv/
